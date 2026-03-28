@@ -150,6 +150,11 @@
     shiftRoot.className = "shift-root";
     shiftRoot.style.display = "none";
 
+    // Stop ALL events from bubbling into Uber Eats handlers
+    ["click", "mousedown", "mouseup", "keydown", "keyup", "input", "focus", "blur", "submit"].forEach(evt => {
+      shiftRoot.addEventListener(evt, (e) => e.stopPropagation(), true);
+    });
+
     const catHTML = CATEGORIES.map(c =>
       `<button class="shift-category" data-value="${c.value}"><span class="shift-category-emoji">${c.emoji}</span><span class="shift-category-label">${c.label}</span></button>`
     ).join("");
