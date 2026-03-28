@@ -6,43 +6,38 @@ importScripts("config.js");
 (function () {
   "use strict";
 
-  // ── State ───────────────────────────────────────────
   const apiKey = CONFIG.API_KEY;
   const apiBase = CONFIG.API_BASE;
   let conversationHistory = [];
-  const pendingToolCalls = new Map(); // callId → resolve function
-
+  const pendingToolCalls = new Map();
   const MODEL = CONFIG.MODEL;
 
   // ── System Prompt ───────────────────────────────────
-  const SYSTEM_PROMPT = `Tu es Shift, un assistant IA integre a Uber Eats qui aide les utilisateurs a trouver le plat parfait. Tu parles francais.
+  const SYSTEM_PROMPT = `Tu es un assistant de decouverte de plats integre a Uber Eats. Tu GUIDES l'utilisateur vers son plat ideal en un minimum d'echanges. Tu parles francais, tu tutoies.
 
-## Ce que tu peux faire
-- Chercher des restaurants par type de cuisine ou de plat
-- Explorer les menus des restaurants
-- Comparer des plats similaires entre plusieurs restaurants (prix, description, restaurant)
-- Recommander des plats selon les envies, contraintes (budget, regime, allergies) et preferences
+## Tes outils
+- search_restaurants : chercher des restos par query
+- get_restaurant_menu : recuperer le menu d'un resto (appelle en parallele sur plusieurs restos)
+- show_dish_cards : afficher des plats (en grid si plusieurs, en mode "gagnant" si 1 seul)
+- show_top_picks : afficher 3 plats cote a cote pour que l'utilisateur choisisse son prefere (1 clic)
+- show_choices : afficher des boutons cliquables pour poser une question (PAS de texte qui attend une reponse)
 
-## Comment tu fonctionnes
-Tu as acces a l'API Uber Eats en temps reel via tes outils :
-1. Cherche les restaurants pertinents avec search_restaurants
-2. Explore les menus de plusieurs restaurants avec get_restaurant_menu (appelle-le plusieurs fois en parallele)
-3. Compare les plats de facon SEMANTIQUE -- si l'utilisateur cherche "chevre miel", identifie les plats au chevre et miel meme si le nom exact ne correspond pas. Pareil pour "4 fromages", "quatre fromages", "4 cheese", etc.
-4. Presente les resultats avec show_dish_cards pour que l'utilisateur puisse voir et cliquer
+## Flow guide -- ULTRA IMPORTANT
+1. L'utilisateur clique sur un mood ou une categorie. Tu recois ca comme message texte.
+2. Si c'est un mood vague (reconfort, festif, etc.), utilise show_choices pour proposer 3-4 sous-categories. UNE SEULE fois max.
+3. Si c'est une categorie precise (pizza, sushi, etc.), cherche DIRECTEMENT.
+4. Scanne 5 restos en parallele avec get_restaurant_menu.
+5. Appelle show_dish_cards avec TOUS les plats pertinents trouves. C'est tout. Pas de top 3, pas de show_top_picks.
 
-## Regles
-- TOUJOURS utiliser show_dish_cards pour presenter des plats -- jamais les lister en texte brut
-- Quand tu compares des plats, scanne au moins 5 restaurants avant de presenter
-- Les prix dans l'API sont en CENTIMES -- convertis en euros (divise par 100) dans show_dish_cards
-- Sois concis -- 1-2 phrases max avant/apres les cards
-- Si tu ne trouves rien, suggere des termes alternatifs
-- Appelle plusieurs get_restaurant_menu en PARALLELE pour aller plus vite
-- "montre-moi", "compare", "trouve" = signal pour scanner plusieurs restaurants
-
-## Style
-- Decontracte mais efficace
-- Reponses courtes
-- Pas de blabla inutile`;
+## Regles STRICTES
+- Utilise show_choices pour poser des questions. JAMAIS de texte qui attend une reponse tapee.
+- Prix API en CENTIMES -> convertir en EUROS (diviser par 100) dans show_dish_cards.
+- Matching SEMANTIQUE : "chevre miel" = plats avec chevre ET miel meme si le nom est different.
+- Texte ULTRA court : 5-10 mots max. Le UI parle pour toi.
+- Maximum 1 show_choices entre le choix initial et les resultats.
+- Appelle get_restaurant_menu en PARALLELE (5 restos a la fois).
+- Quand l'utilisateur selectionne PLUSIEURS categories (ex: "pizza, burger"), cherche dans TOUTES et compare les meilleurs de chaque.
+- Va VITE. Cherche, scanne, affiche. Pas d'etape intermediaire inutile.`;
 
   // ── Tool Definitions ────────────────────────────────
   const TOOLS = [
@@ -51,14 +46,13 @@ Tu as acces a l'API Uber Eats en temps reel via tes outils :
       function: {
         name: "search_restaurants",
         description:
-          "Search for restaurants on Uber Eats matching a query. Returns restaurants with name, rating, ETA, delivery fee, UUID. Use to find restaurants serving a specific dish or cuisine.",
+          "Search Uber Eats restaurants by query. Returns name, rating, ETA, delivery fee, UUID.",
         parameters: {
           type: "object",
           properties: {
             query: {
               type: "string",
-              description:
-                "Search query: dish name, cuisine type, or restaurant name (e.g. 'pizza', 'quatre fromages', 'sushi')",
+              description: "Dish name, cuisine type, or restaurant name",
             },
           },
           required: ["query"],
@@ -70,18 +64,12 @@ Tu as acces a l'API Uber Eats en temps reel via tes outils :
       function: {
         name: "get_restaurant_menu",
         description:
-          "Get the full menu of a specific restaurant. Returns all menu items with title, description, price (in cents), section, image URL. Use after search_restaurants to inspect dishes.",
+          "Get full menu of a restaurant. Returns items with title, description, price (cents), section, image URL.",
         parameters: {
           type: "object",
           properties: {
-            store_uuid: {
-              type: "string",
-              description: "Restaurant UUID from search_restaurants results",
-            },
-            store_name: {
-              type: "string",
-              description: "Restaurant name (for context)",
-            },
+            store_uuid: { type: "string", description: "Restaurant UUID" },
+            store_name: { type: "string", description: "Restaurant name" },
           },
           required: ["store_uuid"],
         },
@@ -92,21 +80,17 @@ Tu as acces a l'API Uber Eats en temps reel via tes outils :
       function: {
         name: "show_dish_cards",
         description:
-          "Display dish comparison cards to the user. ALWAYS use this to present dishes instead of listing them as text. Each card shows image, name, price, restaurant, rating, ETA. User can click to navigate to the restaurant.",
+          "Display dish cards. If 1 dish: shows as winner reveal. If multiple: shows as grid/carousel. ALWAYS use for presenting dishes visually.",
         parameters: {
           type: "object",
           properties: {
             dishes: {
               type: "array",
-              description: "Dishes to display as cards",
               items: {
                 type: "object",
                 properties: {
                   title: { type: "string" },
-                  price: {
-                    type: "number",
-                    description: "Price in EUROS (not cents)",
-                  },
+                  price: { type: "number", description: "Price in EUROS" },
                   description: { type: "string" },
                   image_url: { type: "string" },
                   store_name: { type: "string" },
@@ -121,6 +105,79 @@ Tu as acces a l'API Uber Eats en temps reel via tes outils :
             },
           },
           required: ["dishes"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "show_top_picks",
+        description:
+          "Present exactly 3 dishes side by side for the user to pick their favorite in ONE click. Use this as the final selection step after scanning menus. The user clicks their preferred dish and the winner is returned to you. Then call show_dish_cards with that single winner dish.",
+        parameters: {
+          type: "object",
+          properties: {
+            title: {
+              type: "string",
+              description: "Title like 'Nos 3 meilleures trouvailles'",
+            },
+            dishes: {
+              type: "array",
+              description: "Exactly 3 dishes to compare",
+              items: {
+                type: "object",
+                properties: {
+                  title: { type: "string" },
+                  price: { type: "number", description: "Price in EUROS" },
+                  description: { type: "string" },
+                  image_url: { type: "string" },
+                  store_name: { type: "string" },
+                  store_uuid: { type: "string" },
+                  store_action_url: { type: "string" },
+                  store_rating: { type: "string" },
+                  store_eta: { type: "string" },
+                  store_delivery_fee: { type: "string" },
+                },
+                required: ["title", "store_name"],
+              },
+            },
+          },
+          required: ["dishes"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "show_choices",
+        description:
+          "Present clickable options to the user. Use this INSTEAD of asking text questions. The user clicks one option and the result is returned to you. Use for sub-categories, moods, preferences, dietary constraints.",
+        parameters: {
+          type: "object",
+          properties: {
+            title: {
+              type: "string",
+              description: "Question to display, e.g. 'Plutot quoi ?'",
+            },
+            options: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  label: { type: "string" },
+                  icon: { type: "string", description: "Emoji (optional)" },
+                  value: { type: "string", description: "Value returned on click" },
+                },
+                required: ["label", "value"],
+              },
+              description: "2-6 clickable options",
+            },
+            allow_multiple: {
+              type: "boolean",
+              description: "If true, user can select multiple before confirming",
+            },
+          },
+          required: ["title", "options"],
         },
       },
     },
@@ -139,36 +196,29 @@ Tu as acces a l'API Uber Eats en temps reel via tes outils :
   init();
 
   // ── Message Listener ────────────────────────────────
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((msg, sender) => {
     const tabId = sender.tab?.id;
-
     switch (msg.type) {
       case "CONTENT_READY":
-        sendToTab(tabId, {
-          type: "CONVERSATION_HISTORY",
-          messages: conversationHistory,
-        });
+        sendToTab(tabId, { type: "CONVERSATION_HISTORY", messages: conversationHistory });
         break;
-
       case "CHAT_MESSAGE":
         handleChat(msg.text, tabId);
         break;
-
-      case "TOOL_RESULT":
+      case "TOOL_RESULT": {
         const resolve = pendingToolCalls.get(msg.callId);
         if (resolve) {
           resolve({ callId: msg.callId, data: msg.result });
           pendingToolCalls.delete(msg.callId);
         }
         break;
-
+      }
       case "RESET_CONVERSATION":
         conversationHistory = [];
         chrome.storage.local.remove("conversation");
         break;
     }
-
-    return true; // keep channel open
+    return true;
   });
 
   function sendToTab(tabId, msg) {
@@ -178,95 +228,56 @@ Tu as acces a l'API Uber Eats en temps reel via tes outils :
   // ── Chat Handler ────────────────────────────────────
   async function handleChat(text, tabId) {
     conversationHistory.push({ role: "user", content: text });
-
     let continueLoop = true;
 
     while (continueLoop) {
       try {
-        const response = await fetch(
-          `${apiBase}/chat/completions`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify({
-              model: MODEL,
-              messages: [
-                { role: "system", content: SYSTEM_PROMPT },
-                ...conversationHistory,
-              ],
-              tools: TOOLS,
-              stream: true,
-            }),
-          }
-        );
+        const response = await fetch(`${apiBase}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: MODEL,
+            messages: [{ role: "system", content: SYSTEM_PROMPT }, ...conversationHistory],
+            tools: TOOLS,
+            stream: true,
+          }),
+        });
 
         if (!response.ok) {
           const errText = await response.text();
-          sendToTab(tabId, {
-            type: "ERROR",
-            message: `OpenAI ${response.status}: ${errText.substring(0, 200)}`,
-          });
+          sendToTab(tabId, { type: "ERROR", message: `API ${response.status}: ${errText.substring(0, 200)}` });
           return;
         }
 
-        const { textContent, toolCalls, finishReason } = await processStream(
-          response,
-          tabId
-        );
+        const { textContent, toolCalls, finishReason } = await processStream(response, tabId);
 
         if (finishReason === "tool_calls" && toolCalls.length > 0) {
-          // Add assistant message with tool calls to history
-          const assistantMsg = {
+          conversationHistory.push({
             role: "assistant",
             content: textContent || null,
             tool_calls: toolCalls.map((tc) => ({
-              id: tc.id,
-              type: "function",
-              function: {
-                name: tc.function.name,
-                arguments: tc.function.arguments,
-              },
+              id: tc.id, type: "function",
+              function: { name: tc.function.name, arguments: tc.function.arguments },
             })),
-          };
-          conversationHistory.push(assistantMsg);
-
-          // Execute all tool calls
+          });
           const results = await executeToolCalls(toolCalls, tabId);
-
-          // Add tool results to history
-          for (const result of results) {
-            conversationHistory.push({
-              role: "tool",
-              tool_call_id: result.callId,
-              content: JSON.stringify(result.data),
-            });
+          for (const r of results) {
+            conversationHistory.push({ role: "tool", tool_call_id: r.callId, content: JSON.stringify(r.data) });
           }
-
-          // Loop continues with next OpenAI call
         } else {
-          // Normal text response, done
-          if (textContent) {
-            conversationHistory.push({
-              role: "assistant",
-              content: textContent,
-            });
-          }
+          if (textContent) conversationHistory.push({ role: "assistant", content: textContent });
           sendToTab(tabId, { type: "STREAM_DONE" });
           continueLoop = false;
         }
       } catch (e) {
-        console.error("[Shift BG] Error:", e);
-        sendToTab(tabId, {
-          type: "ERROR",
-          message: e.message || "Unknown error",
-        });
+        console.error("[Shift BG]", e);
+        sendToTab(tabId, { type: "ERROR", message: e.message || "Unknown error" });
         continueLoop = false;
       }
     }
-
     await saveConversation();
   }
 
@@ -274,15 +285,12 @@ Tu as acces a l'API Uber Eats en temps reel via tes outils :
   async function processStream(response, tabId) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-    let buffer = "";
-    let textContent = "";
-    let toolCalls = [];
-    let finishReason = null;
+    let buffer = "", textContent = "", finishReason = null;
+    const toolCalls = [];
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop();
@@ -291,101 +299,97 @@ Tu as acces a l'API Uber Eats en temps reel via tes outils :
         if (!line.startsWith("data: ")) continue;
         const data = line.slice(6).trim();
         if (data === "[DONE]") continue;
-
         let parsed;
-        try {
-          parsed = JSON.parse(data);
-        } catch (_) {
-          continue;
-        }
-
+        try { parsed = JSON.parse(data); } catch (_) { continue; }
         const choice = parsed.choices?.[0];
         if (!choice) continue;
-
-        const delta = choice.delta;
         if (choice.finish_reason) finishReason = choice.finish_reason;
-
-        // Text content
-        if (delta?.content) {
-          textContent += delta.content;
-          sendToTab(tabId, { type: "STREAM_DELTA", text: delta.content });
+        if (choice.delta?.content) {
+          textContent += choice.delta.content;
+          sendToTab(tabId, { type: "STREAM_DELTA", text: choice.delta.content });
         }
-
-        // Tool calls (accumulate chunks)
-        if (delta?.tool_calls) {
-          for (const tc of delta.tool_calls) {
+        if (choice.delta?.tool_calls) {
+          for (const tc of choice.delta.tool_calls) {
             const idx = tc.index;
-            if (!toolCalls[idx]) {
-              toolCalls[idx] = {
-                id: "",
-                function: { name: "", arguments: "" },
-              };
-            }
+            if (!toolCalls[idx]) toolCalls[idx] = { id: "", function: { name: "", arguments: "" } };
             if (tc.id) toolCalls[idx].id = tc.id;
-            if (tc.function?.name)
-              toolCalls[idx].function.name = tc.function.name;
-            if (tc.function?.arguments)
-              toolCalls[idx].function.arguments += tc.function.arguments;
+            if (tc.function?.name) toolCalls[idx].function.name = tc.function.name;
+            if (tc.function?.arguments) toolCalls[idx].function.arguments += tc.function.arguments;
           }
         }
       }
     }
-
     return { textContent, toolCalls: toolCalls.filter(Boolean), finishReason };
   }
 
   // ── Execute Tool Calls ──────────────────────────────
   async function executeToolCalls(toolCalls, tabId) {
-    const results = await Promise.all(
+    return Promise.all(
       toolCalls.map(async (tc) => {
         let args;
-        try {
-          args = JSON.parse(tc.function.arguments);
-        } catch (_) {
-          return { callId: tc.id, data: { error: "Invalid tool arguments" } };
-        }
+        try { args = JSON.parse(tc.function.arguments); }
+        catch (_) { return { callId: tc.id, data: { error: "Invalid arguments" } }; }
 
-        // show_dish_cards is a UI-only tool — no API call needed
+        // UI-only: show_dish_cards (instant)
         if (tc.function.name === "show_dish_cards") {
           sendToTab(tabId, { type: "DISH_CARDS", dishes: args.dishes || [] });
-          return {
-            callId: tc.id,
-            data: { displayed: true, count: (args.dishes || []).length },
-          };
+          return { callId: tc.id, data: { displayed: true, count: (args.dishes || []).length } };
         }
 
-        // API-calling tools: delegate to content script
-        sendToTab(tabId, {
-          type: "TOOL_STATUS",
-          name: tc.function.name,
-          args,
-        });
+        // UI + wait: show_top_picks (waits for user pick)
+        if (tc.function.name === "show_top_picks") {
+          return new Promise((resolve) => {
+            pendingToolCalls.set(tc.id, resolve);
+            sendToTab(tabId, {
+              type: "SHOW_TOP_PICKS",
+              callId: tc.id,
+              title: args.title || "Lequel te fait envie ?",
+              dishes: args.dishes || [],
+            });
+            setTimeout(() => {
+              if (pendingToolCalls.has(tc.id)) {
+                pendingToolCalls.delete(tc.id);
+                resolve({ callId: tc.id, data: { error: "No selection" } });
+              }
+            }, 60000);
+          });
+        }
 
+        // UI + wait: show_choices (waits for user click)
+        if (tc.function.name === "show_choices") {
+          return new Promise((resolve) => {
+            pendingToolCalls.set(tc.id, resolve);
+            sendToTab(tabId, {
+              type: "SHOW_CHOICES",
+              callId: tc.id,
+              title: args.title || "",
+              options: args.options || [],
+              allowMultiple: args.allow_multiple || false,
+            });
+            setTimeout(() => {
+              if (pendingToolCalls.has(tc.id)) {
+                pendingToolCalls.delete(tc.id);
+                resolve({ callId: tc.id, data: { error: "No selection" } });
+              }
+            }, 60000);
+          });
+        }
+
+        // API tools: delegate to content script
+        sendToTab(tabId, { type: "TOOL_STATUS", name: tc.function.name, args });
         return new Promise((resolve) => {
           pendingToolCalls.set(tc.id, resolve);
-          sendToTab(tabId, {
-            type: "EXECUTE_TOOL",
-            callId: tc.id,
-            name: tc.function.name,
-            args,
-          });
-
-          // Safety timeout (15s)
+          sendToTab(tabId, { type: "EXECUTE_TOOL", callId: tc.id, name: tc.function.name, args });
           setTimeout(() => {
             if (pendingToolCalls.has(tc.id)) {
               pendingToolCalls.delete(tc.id);
-              resolve({
-                callId: tc.id,
-                data: { error: "Tool call timed out" },
-              });
+              resolve({ callId: tc.id, data: { error: "Timeout" } });
             }
           }, 15000);
         });
       })
     );
-
-    return results;
   }
 
-  console.log("[Shift 2026] Background service worker loaded");
+  console.log("[Shift 2026] Background loaded");
 })();
