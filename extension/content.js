@@ -431,9 +431,17 @@
   }
 
   // ── Card Builder ────────────────────────────────────
+  function extractFeeAmount(feeStr) {
+    if (!feeStr) return "";
+    // Extract just the price part from "2.49 € Delivery Fee" or "2.49 €"
+    const match = feeStr.match(/([\d.,]+)\s*\u20AC/);
+    if (match) return match[1] + "\u00A0\u20AC livr.";
+    return "";
+  }
+
   function buildCard(dish, index) {
     const price = dish.price != null ? dish.price.toFixed(2) + "\u00A0\u20AC" : "";
-    const fee = dish.store_delivery_fee || "";
+    const fee = extractFeeAmount(dish.store_delivery_fee);
     const card = document.createElement("div");
     card.className = "shift-card";
     card.dataset.dishJson = JSON.stringify(dish);
@@ -819,8 +827,7 @@
     shiftRoot.querySelector(".shift-popup-overlay")?.remove();
 
     const price = dish.price != null ? dish.price.toFixed(2) + " \u20AC" : "";
-    const fee = dish.store_delivery_fee || "";
-    const total = (dish.price != null && fee) ? `Total estim\u00E9 : ~${(dish.price + parseFloat(fee) || dish.price).toFixed(2)} \u20AC` : "";
+    const fee = extractFeeAmount(dish.store_delivery_fee);
 
     const overlay = document.createElement("div");
     overlay.className = "shift-popup-overlay";
