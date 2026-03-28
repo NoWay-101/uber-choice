@@ -391,6 +391,104 @@
 .shift-grid .shift-card-img-wrap { height: 150px; }
 /* hover: just green glow on the hovered card, no dimming others */
 
+.shift-card-fee {
+  font-size: 11px;
+  font-weight: 400;
+  color: #aaa;
+}
+
+/* ═══════════════════════════════════════════════
+   DISH DETAIL POPUP
+   ═══════════════════════════════════════════════ */
+.shift-popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: shiftPopIn 0.2s ease;
+}
+@keyframes shiftPopIn { from { opacity: 0; } to { opacity: 1; } }
+
+.shift-popup {
+  background: #fff;
+  border-radius: 20px;
+  width: 90%;
+  max-width: 480px;
+  max-height: 85vh;
+  overflow-y: auto;
+  position: relative;
+  animation: shiftPopupSlide 0.3s cubic-bezier(0.22,1,0.36,1);
+  box-shadow: 0 24px 80px rgba(0,0,0,0.2);
+}
+@keyframes shiftPopupSlide {
+  from { opacity: 0; transform: scale(0.95) translateY(20px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.shift-popup-close {
+  position: absolute;
+  top: 12px; right: 12px;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.5);
+  color: #fff; border: none;
+  font-size: 16px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 2;
+  transition: background 0.2s;
+}
+.shift-popup-close:hover { background: rgba(0,0,0,0.7); }
+
+.shift-popup-img {
+  width: 100%; height: 260px;
+  object-fit: cover;
+  border-radius: 20px 20px 0 0;
+  display: block;
+}
+
+.shift-popup-body { padding: 24px; }
+
+.shift-popup-title {
+  font-size: 22px; font-weight: 700;
+  color: #000; margin: 0 0 8px;
+}
+
+.shift-popup-store {
+  font-size: 14px; color: #888;
+  margin-bottom: 12px;
+}
+
+.shift-popup-desc {
+  font-size: 14px; color: #545454;
+  line-height: 1.5; margin: 0 0 16px;
+}
+
+.shift-popup-pricing {
+  display: flex; align-items: baseline;
+  gap: 8px; margin-bottom: 20px;
+}
+
+.shift-popup-price {
+  font-size: 24px; font-weight: 700; color: #000;
+}
+
+.shift-popup-fee {
+  font-size: 14px; color: #888;
+}
+
+.shift-popup-cta {
+  width: 100%; padding: 16px;
+  background: #06c167; color: #fff;
+  border: none; border-radius: 12px;
+  font-size: 16px; font-weight: 700;
+  cursor: pointer; font-family: inherit;
+  transition: background 0.2s;
+}
+.shift-popup-cta:hover { background: #05a358; }
+
 .shift-load-more {
   display: block;
   margin: 20px auto 0;

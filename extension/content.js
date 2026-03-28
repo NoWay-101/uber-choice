@@ -253,18 +253,16 @@
     // Mic
     shiftRoot.querySelector("#shiftMic").addEventListener("click", toggleMic);
 
-    // Card clicks → navigate to store page with item hash
+    // Card clicks → open detail popup
     $stage.addEventListener("click", (e) => {
-      const card = e.target.closest(".shift-card[data-actionurl]");
+      const card = e.target.closest(".shift-card");
       if (!card || card.closest(".shift-top-picks-arena")) return;
-      const url = card.dataset.actionurl;
-      const itemId = card.dataset.itemid;
-      if (url) {
-        sessionStorage.setItem("shift-active", "true");
-        // Add item UUID to URL so we can try to open it
-        const navUrl = itemId ? url + "&mod=quickView&modctx=" + encodeURIComponent(itemId) : url;
-        window.location.href = navUrl;
-      }
+      // Don't open popup if clicking inside a popup already
+      if (card.closest(".shift-popup")) return;
+      try {
+        const dish = JSON.parse(card.dataset.dishJson);
+        if (dish) openDishPopup(dish);
+      } catch (_) {}
     });
 
     // Bottom bar input
@@ -409,15 +407,17 @@
   // ── Card Builder ────────────────────────────────────
   function buildCard(dish, index) {
     const price = dish.price != null ? dish.price.toFixed(2) + "\u00A0\u20AC" : "";
+    const fee = dish.store_delivery_fee || "";
     const card = document.createElement("div");
     card.className = "shift-card";
+    card.dataset.dishJson = JSON.stringify(dish);
     if (dish.store_action_url) card.dataset.actionurl = dish.store_action_url;
     if (dish.item_uuid) card.dataset.itemid = dish.item_uuid;
     card.style.setProperty("--i", index);
     card.innerHTML = `
       <div class="shift-card-img-wrap">
         ${dish.image_url ? `<img class="shift-card-img" src="${esc(dish.image_url)}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=shift-card-img-placeholder>\u{1F37D}\u{FE0F}</div>'" />` : '<div class="shift-card-img-placeholder">\u{1F37D}\u{FE0F}</div>'}
-        ${price ? `<div class="shift-card-price">${esc(price)}</div>` : ""}
+        ${price ? `<div class="shift-card-price">${esc(price)}${fee ? ` <span class="shift-card-fee">+ ${esc(fee)}</span>` : ""}</div>` : ""}
       </div>
       <div class="shift-card-body">
         <div class="shift-card-name">${esc(dish.title || "")}</div>
@@ -783,6 +783,58 @@
     const btn = shiftRoot?.querySelector("#shiftMic");
     if (btn) btn.classList.remove("listening");
     if ($textInput) $textInput.placeholder = "Pizza chevre miel, un truc reconfortant, sushi...";
+  }
+
+  // ── Dish Detail Popup ────────────────────────────────
+  function openDishPopup(dish) {
+    // Remove existing popup if any
+    shiftRoot.querySelector(".shift-popup-overlay")?.remove();
+
+    const price = dish.price != null ? dish.price.toFixed(2) + " \u20AC" : "";
+    const fee = dish.store_delivery_fee || "";
+    const total = (dish.price != null && fee) ? `Total estim\u00E9 : ~${(dish.price + parseFloat(fee) || dish.price).toFixed(2)} \u20AC` : "";
+
+    const overlay = document.createElement("div");
+    overlay.className = "shift-popup-overlay";
+    overlay.innerHTML = `
+      <div class="shift-popup">
+        <button class="shift-popup-close">\u2715</button>
+        ${dish.image_url ? `<img class="shift-popup-img" src="${esc(dish.image_url)}" />` : ""}
+        <div class="shift-popup-body">
+          <h2 class="shift-popup-title">${esc(dish.title || "")}</h2>
+          <div class="shift-popup-store">
+            ${esc(dish.store_name || "")}
+            ${dish.store_rating ? ` \u00B7 \u2605 ${esc(dish.store_rating)}` : ""}
+            ${dish.store_eta ? ` \u00B7 ${esc(dish.store_eta)}` : ""}
+          </div>
+          ${dish.description ? `<p class="shift-popup-desc">${esc(dish.description)}</p>` : ""}
+          <div class="shift-popup-pricing">
+            ${price ? `<span class="shift-popup-price">${esc(price)}</span>` : ""}
+            ${fee ? `<span class="shift-popup-fee">+ ${esc(fee)}</span>` : ""}
+          </div>
+          <button class="shift-popup-cta">Voir sur Uber Eats</button>
+        </div>
+      </div>
+    `;
+
+    // Close on overlay click or X
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay || e.target.closest(".shift-popup-close")) {
+        overlay.remove();
+      }
+    });
+
+    // CTA → navigate to store
+    overlay.querySelector(".shift-popup-cta").addEventListener("click", () => {
+      if (dish.store_action_url) {
+        sessionStorage.setItem("shift-active", "true");
+        const itemId = dish.item_uuid;
+        const navUrl = itemId ? dish.store_action_url + "&mod=quickView&modctx=" + encodeURIComponent(itemId) : dish.store_action_url;
+        window.location.href = navUrl;
+      }
+    });
+
+    shiftRoot.appendChild(overlay);
   }
 
   // ── Helpers ─────────────────────────────────────────
