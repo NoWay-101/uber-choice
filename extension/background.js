@@ -11,6 +11,35 @@ importScripts("config.js");
   let conversationHistory = [];
   const pendingToolCalls = new Map();
   const MODEL = CONFIG.MODEL;
+  const GOOGLE_MAPS_API_KEY = CONFIG.GOOGLE_MAPS_API_KEY || "";
+  const GOOGLE_MAPS_API_URL =
+    CONFIG.GOOGLE_MAPS_API_URL ||
+    "https://places.googleapis.com/v1/places:searchNearby";
+  const GOOGLE_TEXT_SEARCH_API_URL =
+    CONFIG.GOOGLE_TEXT_SEARCH_API_URL ||
+    "https://places.googleapis.com/v1/places:searchText";
+  const GOOGLE_NEARBY_TYPE_GROUPS = [
+    ["restaurant"],
+    ["meal_takeaway", "meal_delivery", "cafe"],
+  ];
+  const GOOGLE_MAX_REVIEWS = 5;
+  const GOOGLE_FIELD_MASK = [
+    "places.id",
+    "places.name",
+    "places.displayName",
+    "places.formattedAddress",
+    "places.location",
+    "places.rating",
+    "places.userRatingCount",
+    "places.reviews",
+    "places.primaryType",
+    "places.primaryTypeDisplayName",
+    "places.types",
+    "places.priceLevel",
+    "places.googleMapsUri",
+    "places.websiteUri",
+    "places.businessStatus",
+  ].join(",");
 
   // ── System Prompt ───────────────────────────────────
   const SYSTEM_PROMPT = `Tu es un assistant de decouverte de plats integre a Uber Eats. Tu GUIDES l'utilisateur vers son plat ideal en un minimum d'echanges. Tu parles francais, tu tutoies.
@@ -38,6 +67,7 @@ importScripts("config.js");
 - Appelle get_restaurant_menu en PARALLELE (5 restos a la fois).
 - Quand l'utilisateur selectionne PLUSIEURS categories (ex: "pizza, burger"), cherche dans TOUTES et compare les meilleurs de chaque.
 - Quand l'utilisateur demande PLUSIEURS produits pour une seule commande (ex: "pizza avec coca et cookie"), privilegie les restos capables de couvrir le panier complet et renvoie plusieurs plats du MEME resto dans show_dish_cards.
+- Quand une note Google et des avis Google sont disponibles, utilise-les pour departager des restaurants similaires.
 - Va VITE. Cherche, scanne, affiche. Pas d'etape intermediaire inutile.`;
 
   // ── Tool Definitions ────────────────────────────────
@@ -47,7 +77,7 @@ importScripts("config.js");
       function: {
         name: "search_restaurants",
         description:
-          "Search Uber Eats restaurants by query. Returns name, rating, ETA, delivery fee, UUID.",
+          "Search Uber Eats restaurants by query. Returns restaurants with name, Uber rating, ETA, delivery fee, UUID, and Google rating/review snippets when a nearby Google Places match is found.",
         parameters: {
           type: "object",
           properties: {
@@ -65,7 +95,7 @@ importScripts("config.js");
       function: {
         name: "get_restaurant_menu",
         description:
-          "Get full menu of a restaurant. Returns items with title, description, price (cents), section, image URL.",
+          "Get full menu of a restaurant. Returns items with title, description, price (cents), section, image URL, plus cached Google place details when available.",
         parameters: {
           type: "object",
           properties: {
@@ -81,7 +111,7 @@ importScripts("config.js");
       function: {
         name: "show_dish_cards",
         description:
-          "Display dish cards. If 1 dish: shows as winner reveal. If multiple dishes come from the same restaurant, the UI groups them on one restaurant row. ALWAYS use for presenting dishes visually.",
+          "Display dish cards. If 1 dish: shows as winner reveal. If multiple dishes come from the same restaurant, the UI groups them on one restaurant row. Cards also surface and review snippets when available. ALWAYS use for presenting dishes visually.",
         parameters: {
           type: "object",
           properties: {
@@ -194,10 +224,253 @@ importScripts("config.js");
     await chrome.storage.local.set({ conversation: conversationHistory });
   }
 
+  function mapReview(review) {
+    return {
+      id: review.name || null,
+      rating: review.rating ?? null,
+      relativePublishTimeDescription:
+        review.relativePublishTimeDescription || null,
+      publishTime: review.publishTime || null,
+      text: review.text?.text || review.originalText?.text || null,
+      originalText: review.originalText?.text || null,
+      googleMapsUri: review.googleMapsUri || null,
+      author: review.authorAttribution
+        ? {
+            name: review.authorAttribution.displayName || null,
+            profileUri: review.authorAttribution.uri || null,
+            photoUri: review.authorAttribution.photoUri || null,
+          }
+        : null,
+    };
+  }
+
+  function mapPlace(place) {
+    return {
+      id: place.id || null,
+      resourceName: place.name || null,
+      name: place.displayName?.text || null,
+      address: place.formattedAddress || null,
+      location: place.location
+        ? {
+            latitude: place.location.latitude,
+            longitude: place.location.longitude,
+          }
+        : null,
+      rating: place.rating ?? null,
+      note: place.rating ?? null,
+      userRatingCount: place.userRatingCount ?? null,
+      primaryType: place.primaryType || null,
+      primaryTypeLabel: place.primaryTypeDisplayName?.text || null,
+      types: Array.isArray(place.types) ? place.types : [],
+      priceLevel: place.priceLevel || null,
+      businessStatus: place.businessStatus || null,
+      googleMapsUri: place.googleMapsUri || null,
+      websiteUri: place.websiteUri || null,
+      reviews: Array.isArray(place.reviews)
+        ? place.reviews.slice(0, GOOGLE_MAX_REVIEWS).map(mapReview)
+        : [],
+    };
+  }
+
+  function getPlaceTypes(place) {
+    return Array.from(
+      new Set(
+        [place.primaryType, ...(Array.isArray(place.types) ? place.types : [])]
+          .filter(Boolean)
+          .map((value) => String(value))
+      )
+    );
+  }
+
+  function isFoodServicePlace(place) {
+    return getPlaceTypes(place).some(
+      (type) =>
+        type === "restaurant" ||
+        type === "meal_takeaway" ||
+        type === "meal_delivery" ||
+        type === "cafe" ||
+        type === "food" ||
+        type.endsWith("_restaurant")
+    );
+  }
+
+  async function executeGooglePlacesSearch(url, body, fallbackErrorMessage) {
+    const apiResponse = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+        "X-Goog-FieldMask": GOOGLE_FIELD_MASK,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const rawResponse = await apiResponse.json().catch(() => ({}));
+
+    if (!apiResponse.ok) {
+      const errorMessage =
+        rawResponse?.error?.message || fallbackErrorMessage;
+      const error = new Error(errorMessage);
+      error.statusCode = apiResponse.status;
+      error.details = rawResponse;
+      throw error;
+    }
+
+    return Array.isArray(rawResponse.places) ? rawResponse.places : [];
+  }
+
+  function dedupeMappedPlaces(places) {
+    const placesById = new Map();
+
+    for (const place of places) {
+      if (!place?.id || placesById.has(place.id)) {
+        continue;
+      }
+
+      placesById.set(place.id, place);
+    }
+
+    return Array.from(placesById.values());
+  }
+
+  async function searchNearbyRestaurants(params) {
+    if (!GOOGLE_MAPS_API_KEY) {
+      return { count: 0, disabled: true, places: [] };
+    }
+
+    const places = dedupeMappedPlaces(
+      (
+        await Promise.all(
+          GOOGLE_NEARBY_TYPE_GROUPS.map((includedTypes) =>
+            executeGooglePlacesSearch(
+              GOOGLE_MAPS_API_URL,
+              {
+                includedTypes,
+                maxResultCount: params.limit,
+                languageCode: params.languageCode,
+                regionCode: params.regionCode,
+                locationRestriction: {
+                  circle: {
+                    center: {
+                      latitude: params.latitude,
+                      longitude: params.longitude,
+                    },
+                    radius: params.radius,
+                  },
+                },
+              },
+              "Google Places a renvoye une erreur."
+            )
+          )
+        )
+      )
+        .flat()
+        .filter(isFoodServicePlace)
+        .map(mapPlace)
+    );
+
+    return { count: places.length, places };
+  }
+
+  async function searchRestaurantsByText(params) {
+    if (!GOOGLE_MAPS_API_KEY) {
+      return { count: 0, disabled: true, places: [] };
+    }
+
+    const body = {
+      textQuery: params.query,
+      pageSize: params.limit,
+      languageCode: params.languageCode,
+      regionCode: params.regionCode,
+    };
+
+    if (
+      Number.isFinite(params.latitude) &&
+      Number.isFinite(params.longitude)
+    ) {
+      body.locationBias = {
+        circle: {
+          center: {
+            latitude: params.latitude,
+            longitude: params.longitude,
+          },
+          radius: params.radius,
+        },
+      };
+    }
+
+    const places = dedupeMappedPlaces(
+      (
+        await executeGooglePlacesSearch(
+          GOOGLE_TEXT_SEARCH_API_URL,
+          body,
+          "Google Places text search a renvoye une erreur."
+        )
+      )
+        .filter(isFoodServicePlace)
+        .map(mapPlace)
+    );
+
+    return { count: places.length, places };
+  }
+
+  async function handleGooglePlacesRequest(msg) {
+    const location = msg.location || {};
+    const latitude = Number(location.latitude);
+    const longitude = Number(location.longitude);
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return {
+        ok: false,
+        places: [],
+        error: "Missing or invalid user location.",
+      };
+    }
+
+    const result = await searchNearbyRestaurants({
+      latitude,
+      longitude,
+      radius: Number(msg.radius) || 3500,
+      limit: Number(msg.limit) || 30,
+      languageCode: msg.languageCode || "fr",
+      regionCode: msg.regionCode || "FR",
+    });
+
+    return { ok: true, ...result };
+  }
+
+  async function handleGooglePlacesTextSearchRequest(msg) {
+    const query = String(msg.query || "").trim();
+
+    if (!query) {
+      return {
+        ok: false,
+        places: [],
+        error: "Missing text query.",
+      };
+    }
+
+    const location = msg.location || {};
+    const latitude = Number(location.latitude);
+    const longitude = Number(location.longitude);
+
+    const result = await searchRestaurantsByText({
+      query,
+      latitude: Number.isFinite(latitude) ? latitude : null,
+      longitude: Number.isFinite(longitude) ? longitude : null,
+      radius: Number(msg.radius) || 5000,
+      limit: Number(msg.limit) || 5,
+      languageCode: msg.languageCode || "fr",
+      regionCode: msg.regionCode || "FR",
+    });
+
+    return { ok: true, ...result };
+  }
+
   init();
 
   // ── Message Listener ────────────────────────────────
-  chrome.runtime.onMessage.addListener((msg, sender) => {
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const tabId = sender.tab?.id;
     switch (msg.type) {
       case "CONTENT_READY":
@@ -214,6 +487,28 @@ importScripts("config.js");
         }
         break;
       }
+      case "ENRICH_WITH_GOOGLE_PLACES":
+        handleGooglePlacesRequest(msg)
+          .then((result) => sendResponse(result))
+          .catch((error) =>
+            sendResponse({
+              ok: false,
+              places: [],
+              error: error.message || "Google Places request failed",
+            })
+          );
+        return true;
+      case "SEARCH_GOOGLE_PLACE_BY_TEXT":
+        handleGooglePlacesTextSearchRequest(msg)
+          .then((result) => sendResponse(result))
+          .catch((error) =>
+            sendResponse({
+              ok: false,
+              places: [],
+              error: error.message || "Google Places text search failed",
+            })
+          );
+        return true;
       case "RESET_CONVERSATION":
         conversationHistory = [];
         chrome.storage.local.remove("conversation");

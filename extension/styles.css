@@ -368,6 +368,143 @@
 }
 .shift-card-meta { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; color: #999; }
 .shift-card-rating { color: #f5a623; font-weight: 600; }
+.shift-card-google-reviews-button {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #8a6200;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+.shift-card-google-reviews-button:hover {
+  color: #5f4300;
+  text-decoration: underline;
+}
+
+.shift-reviews-modal[hidden] {
+  display: none;
+}
+.shift-reviews-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+}
+.shift-reviews-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.42);
+}
+.shift-reviews-dialog {
+  position: relative;
+  width: min(680px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  margin: 24px auto;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 24px;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.22);
+  padding: 24px;
+  overflow: hidden;
+  transform: translateY(12px);
+  opacity: 0;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.shift-reviews-modal.is-open .shift-reviews-dialog {
+  transform: translateY(0);
+  opacity: 1;
+}
+.shift-reviews-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: #f5f5f5;
+  color: #444;
+  font-size: 22px;
+  cursor: pointer;
+}
+.shift-reviews-header {
+  padding-right: 40px;
+}
+.shift-reviews-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8a6200;
+}
+.shift-reviews-title {
+  margin-top: 6px;
+  font-size: 28px;
+  font-weight: 700;
+  color: #111;
+  line-height: 1.2;
+}
+.shift-reviews-summary {
+  margin-top: 8px;
+  font-size: 14px;
+  color: #666;
+}
+.shift-reviews-list {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.shift-reviews-actions {
+  display: flex;
+  justify-content: center;
+  padding-top: 16px;
+  margin-top: 16px;
+  border-top: 1px solid #f0ead8;
+}
+.shift-reviews-more {
+  padding: 10px 18px;
+  border: 1px solid #d8caa2;
+  border-radius: 999px;
+  background: #fff8e7;
+  color: #7a5a00;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+.shift-reviews-more:hover {
+  background: #f8edd0;
+}
+.shift-reviews-item {
+  padding: 14px 16px;
+  border: 1px solid #ece3c8;
+  border-radius: 16px;
+  background: #faf7ef;
+}
+.shift-reviews-item-meta {
+  font-size: 12px;
+  font-weight: 700;
+  color: #7a5a00;
+}
+.shift-reviews-item-text {
+  margin-top: 6px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #505050;
+  white-space: pre-wrap;
+}
+.shift-reviews-empty {
+  padding: 20px 0;
+  font-size: 14px;
+  color: #777;
+}
 
 /* ═══════════════════════════════════════════════
    GRID
@@ -413,9 +550,17 @@
   line-height: 1.2;
 }
 .shift-restaurant-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
   font-size: 13px;
   color: #7b7b7b;
   margin-top: 4px;
+}
+.shift-restaurant-row-google-rating {
+  color: #b07b00;
+  font-weight: 700;
 }
 .shift-restaurant-row-summary {
   max-width: 45%;
