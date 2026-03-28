@@ -433,6 +433,8 @@
   // ── Card Builder ────────────────────────────────────
   function extractFeeAmount(feeStr) {
     if (!feeStr) return "";
+    // Must contain a digit — ignore priceBucket like "€€"
+    if (!/\d/.test(feeStr)) return "";
     // Extract just the price part from "2.49 € Delivery Fee" or "2.49 €"
     const match = feeStr.match(/([\d.,]+)\s*\u20AC/);
     if (match) return match[1] + "\u00A0\u20AC livr.";
