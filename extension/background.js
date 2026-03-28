@@ -27,7 +27,7 @@ importScripts("config.js");
 2. Si c'est un mood vague (reconfort, festif, etc.), utilise show_choices pour proposer 3-4 sous-categories. UNE SEULE fois max.
 3. Si c'est une categorie precise (pizza, sushi, etc.), cherche DIRECTEMENT.
 4. Scanne 5 restos en parallele avec get_restaurant_menu.
-5. Appelle show_dish_cards avec TOUS les plats pertinents trouves. C'est tout. Pas de top 3, pas de show_top_picks.
+5. Appelle show_dish_cards avec TOUS les plats pertinents trouves.
 
 ## Regles STRICTES
 - Utilise show_choices pour poser des questions. JAMAIS de texte qui attend une reponse tapee.
@@ -36,8 +36,9 @@ importScripts("config.js");
 - Texte ULTRA court : 5-10 mots max. Le UI parle pour toi.
 - Maximum 1 show_choices entre le choix initial et les resultats.
 - Appelle get_restaurant_menu en PARALLELE (5 restos a la fois).
-- Quand l'utilisateur selectionne PLUSIEURS categories (ex: "pizza, burger"), cherche dans TOUTES et compare les meilleurs de chaque.
-- Va VITE. Cherche, scanne, affiche. Pas d'etape intermediaire inutile.`;
+- Quand l'utilisateur selectionne PLUSIEURS categories (ex: "pizza, burger"), cherche dans TOUTES.
+- Va VITE. Cherche, scanne, affiche. Pas d'etape intermediaire.
+- RAPIDITE : des que tu as des resultats, affiche-les immediatement avec show_dish_cards. N'attends PAS d'avoir tout scanne.`;
 
   // ── Tool Definitions ────────────────────────────────
   const TOOLS = [

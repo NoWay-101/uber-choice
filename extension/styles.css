@@ -257,7 +257,18 @@
 /* ═══════════════════════════════════════════════
    EXPERIENCE (results area)
    ═══════════════════════════════════════════════ */
-.shift-experience { animation: shiftFadeUp 0.35s ease; }
+.shift-experience {
+  animation: shiftFadeUp 0.35s ease;
+  display: flex;
+  flex-direction: column;
+  min-height: 80vh;
+}
+
+.shift-scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 16px;
+}
 
 .shift-response {
   text-align: center;
@@ -379,6 +390,26 @@
 }
 .shift-grid .shift-card-img-wrap { height: 150px; }
 .shift-grid:hover .shift-card:not(:hover) { opacity: 0.55; transition: opacity 0.25s; }
+
+.shift-load-more {
+  display: block;
+  margin: 20px auto 0;
+  padding: 12px 32px;
+  background: #f5f5f5;
+  border: 2px solid #eee;
+  border-radius: 50px;
+  color: #545454;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+.shift-load-more:hover {
+  background: #e8f9ef;
+  border-color: #06c167;
+  color: #06c167;
+}
 
 /* ═══════════════════════════════════════════════
    CAROUSEL
@@ -549,9 +580,13 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 24px;
-  padding-top: 20px;
+  padding: 16px 0;
   border-top: 1px solid #f0f0f0;
+  background: #fff;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  flex-shrink: 0;
 }
 
 .shift-bottom-input {

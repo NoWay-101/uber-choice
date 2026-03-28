@@ -179,8 +179,10 @@
         <button class="shift-confirm-btn" id="shiftConfirm" style="display:none">C'est parti !</button>
       </div>
       <div class="shift-experience" id="shiftExperience" style="display:none">
-        <div class="shift-response" id="shiftResponse"></div>
-        <div class="shift-stage" id="shiftStage"></div>
+        <div class="shift-scroll-area" id="shiftScrollArea">
+          <div class="shift-response" id="shiftResponse"></div>
+          <div class="shift-stage" id="shiftStage"></div>
+        </div>
         <div class="shift-bottom-bar" id="shiftBottomBar">
           <button class="shift-action-pill" id="shiftRestart">\u21BB</button>
           <div class="shift-bottom-input">
@@ -342,9 +344,8 @@
     $response.textContent = "";
     $response.classList.add("streaming");
     $stage.innerHTML = "";
-    const $actions = shiftRoot.querySelector("#shiftActions") || shiftRoot.querySelector("#shiftBottomBar");
-    if ($actions) $actions.style.display = "";
     isStreaming = true;
+    scrollTop();
     chrome.runtime.sendMessage({ type: "CHAT_MESSAGE", text });
   }
 
@@ -428,10 +429,13 @@
   }
 
   // ── Render: Dish Cards ──────────────────────────────
+  const MAX_VISIBLE = 9;
+
   function renderDishCards(dishes) {
     if (!dishes?.length || !$stage) return;
     $stage.innerHTML = "";
     if ($response) { $response.textContent = ""; $response.classList.remove("streaming"); }
+    scrollTop();
 
     if (dishes.length === 1) {
       renderWinner(dishes[0]);
@@ -440,6 +444,12 @@
     } else {
       renderGrid(dishes);
     }
+  }
+
+  function scrollTop() {
+    const area = shiftRoot?.querySelector("#shiftScrollArea");
+    if (area) area.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function renderCarousel(dishes) {
@@ -461,8 +471,26 @@
   function renderGrid(dishes) {
     const grid = document.createElement("div");
     grid.className = "shift-grid";
-    dishes.forEach((d, i) => grid.appendChild(buildCard(d, i)));
+
+    const visible = dishes.slice(0, MAX_VISIBLE);
+    const rest = dishes.slice(MAX_VISIBLE);
+
+    visible.forEach((d, i) => grid.appendChild(buildCard(d, i)));
     $stage.appendChild(grid);
+
+    if (rest.length > 0) {
+      const loadMore = document.createElement("button");
+      loadMore.className = "shift-load-more";
+      loadMore.textContent = `Voir ${rest.length} autre${rest.length > 1 ? "s" : ""} plat${rest.length > 1 ? "s" : ""}`;
+      loadMore.addEventListener("click", () => {
+        loadMore.remove();
+        rest.forEach((d, i) => {
+          const card = buildCard(d, MAX_VISIBLE + i);
+          grid.appendChild(card);
+        });
+      });
+      $stage.appendChild(loadMore);
+    }
   }
 
   // ── Render: Winner ──────────────────────────────────
