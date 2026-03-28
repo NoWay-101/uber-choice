@@ -9,6 +9,9 @@
 
   const UE = { "Content-Type": "application/json", "x-csrf-token": "x" };
 
+  // Cache delivery fees by store UUID (from feed search)
+  const storeFeeCache = new Map();
+
   async function ueFeedSearch(query) {
     const res = await fetch("/_p/api/getFeedV1?localeCode=fr-en", {
       method: "POST", headers: UE, credentials: "include",
@@ -33,7 +36,10 @@
           if (m.badgeType === "ETD") eta = m.text;
           else if (m.badgeType === "FARE") fee = m.badgeData?.fare?.deliveryFee || m.text;
         }
-        return { uuid: s.storeUuid, title: s.title?.text || "?", rating: s.rating?.text || null, eta, deliveryFee: fee, actionUrl: s.actionUrl || null };
+        const store = { uuid: s.storeUuid, title: s.title?.text || "?", rating: s.rating?.text || null, eta, deliveryFee: fee, actionUrl: s.actionUrl || null };
+        // Cache fee for later use in cards
+        if (store.uuid && fee) storeFeeCache.set(store.uuid, fee);
+        return store;
       }).filter(Boolean);
   }
 
@@ -443,7 +449,9 @@
 
   function buildCard(dish, index) {
     const price = dish.price != null ? dish.price.toFixed(2) + "\u00A0\u20AC" : "";
-    const fee = extractFeeAmount(dish.store_delivery_fee);
+    // Try dish fee, then cached fee from feed search
+    const rawFee = dish.store_delivery_fee || storeFeeCache.get(dish.store_uuid) || "";
+    const fee = extractFeeAmount(rawFee);
     const card = document.createElement("div");
     card.className = "shift-card";
     card.dataset.dishJson = JSON.stringify(dish);
@@ -829,7 +837,8 @@
     shiftRoot.querySelector(".shift-popup-overlay")?.remove();
 
     const price = dish.price != null ? dish.price.toFixed(2) + " \u20AC" : "";
-    const fee = extractFeeAmount(dish.store_delivery_fee);
+    const rawFee = dish.store_delivery_fee || storeFeeCache.get(dish.store_uuid) || "";
+    const fee = extractFeeAmount(rawFee);
 
     const overlay = document.createElement("div");
     overlay.className = "shift-popup-overlay";
