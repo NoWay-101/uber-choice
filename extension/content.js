@@ -337,16 +337,41 @@
   }
 
   // ── Flow Control ────────────────────────────────────
+  let flowTimeout = null;
+  let lastFlowText = "";
+
   function startFlow(text) {
     if (!$welcome || !$experience) return;
     lastUserPrompt = text || "";
+    lastFlowText = text;
     $welcome.style.display = "none";
     $experience.style.display = "";
-    $response.textContent = "";
+    $response.textContent = "Recherche en cours...";
     $response.classList.add("streaming");
     $stage.innerHTML = "";
     isStreaming = true;
     scrollTop();
+
+    // Clear any previous timeout
+    if (flowTimeout) clearTimeout(flowTimeout);
+
+    // Safety timeout: if nothing comes back in 20s, show retry
+    flowTimeout = setTimeout(() => {
+      if (isStreaming && $stage && $stage.children.length === 0 && !$response.textContent.includes("Erreur")) {
+        isStreaming = false;
+        $response.textContent = "";
+        $response.classList.remove("streaming");
+        const retry = document.createElement("div");
+        retry.className = "shift-retry";
+        retry.innerHTML = `<p>La recherche n'a pas abouti</p><button class="shift-retry-btn">R\u00E9essayer</button>`;
+        retry.querySelector("button").addEventListener("click", () => {
+          retry.remove();
+          startFlow(lastFlowText);
+        });
+        $stage.appendChild(retry);
+      }
+    }, 20000);
+
     chrome.runtime.sendMessage({ type: "CHAT_MESSAGE", text });
   }
 
@@ -379,6 +404,7 @@
 
   function finalizeStream() {
     if (!$response) return;
+    if (flowTimeout) { clearTimeout(flowTimeout); flowTimeout = null; }
     $response.classList.remove("streaming");
     $response.innerHTML = $response.textContent.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
     isStreaming = false;
@@ -436,8 +462,10 @@
 
   function renderDishCards(dishes) {
     if (!dishes?.length || !$stage) return;
+    if (flowTimeout) { clearTimeout(flowTimeout); flowTimeout = null; }
     $stage.innerHTML = "";
     if ($response) { $response.textContent = ""; $response.classList.remove("streaming"); }
+    isStreaming = false;
     scrollTop();
 
     if (dishes.length === 1) {

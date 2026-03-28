@@ -301,6 +301,33 @@
   margin-bottom: 16px;
 }
 
+.shift-retry {
+  text-align: center;
+  padding: 40px 20px;
+  animation: shiftFadeUp 0.3s ease;
+}
+.shift-retry p {
+  color: #888;
+  font-size: 15px;
+  margin: 0 0 16px;
+}
+.shift-retry-btn {
+  padding: 12px 32px;
+  background: #06c167;
+  color: #fff;
+  border: none;
+  border-radius: 50px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+.shift-retry-btn:hover {
+  background: #05a358;
+  transform: scale(1.03);
+}
+
 /* ═══════════════════════════════════════════════
    PROGRESS (stacked loading steps)
    ═══════════════════════════════════════════════ */
