@@ -37,6 +37,7 @@ importScripts("config.js");
 - Maximum 1 show_choices entre le choix initial et les resultats.
 - Appelle get_restaurant_menu en PARALLELE (5 restos a la fois).
 - Quand l'utilisateur selectionne PLUSIEURS categories (ex: "pizza, burger"), cherche dans TOUTES et compare les meilleurs de chaque.
+- Quand l'utilisateur demande PLUSIEURS produits pour une seule commande (ex: "pizza avec coca et cookie"), privilegie les restos capables de couvrir le panier complet et renvoie plusieurs plats du MEME resto dans show_dish_cards.
 - Va VITE. Cherche, scanne, affiche. Pas d'etape intermediaire inutile.`;
 
   // ── Tool Definitions ────────────────────────────────
@@ -80,7 +81,7 @@ importScripts("config.js");
       function: {
         name: "show_dish_cards",
         description:
-          "Display dish cards. If 1 dish: shows as winner reveal. If multiple: shows as grid/carousel. ALWAYS use for presenting dishes visually.",
+          "Display dish cards. If 1 dish: shows as winner reveal. If multiple dishes come from the same restaurant, the UI groups them on one restaurant row. ALWAYS use for presenting dishes visually.",
         parameters: {
           type: "object",
           properties: {

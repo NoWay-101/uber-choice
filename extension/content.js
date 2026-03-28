@@ -96,6 +96,7 @@
   // ═══════════════════════════════════════════════════
 
   let feedEl = null, shiftRoot = null, shiftActive = false, isStreaming = false;
+  let lastUserPrompt = "";
   let $welcome, $experience, $response, $stage, $textInput, $fab;
 
   const CATEGORIES = [
@@ -270,6 +271,7 @@
       const text = $bottomText.value.trim();
       if (!text || isStreaming) return;
       $bottomText.value = "";
+      lastUserPrompt = text;
       $response.textContent = "";
       $response.classList.add("streaming");
       $stage.innerHTML = "";
@@ -337,6 +339,7 @@
   // ── Flow Control ────────────────────────────────────
   function startFlow(text) {
     if (!$welcome || !$experience) return;
+    lastUserPrompt = text || "";
     $welcome.style.display = "none";
     $experience.style.display = "";
     $response.textContent = "";
@@ -435,11 +438,96 @@
 
     if (dishes.length === 1) {
       renderWinner(dishes[0]);
+    } else if (shouldRenderRestaurantRows(dishes)) {
+      renderRestaurantRows(dishes);
     } else if (dishes.length <= 5) {
       renderCarousel(dishes);
     } else {
       renderGrid(dishes);
     }
+  }
+
+  function shouldRenderRestaurantRows(dishes) {
+    if (dishes.length < 2) return false;
+    const groups = groupDishesByRestaurant(dishes);
+    const hasRestaurantBundles = groups.some((group) => group.dishes.length > 1);
+    if (!hasRestaurantBundles) return false;
+
+    const prompt = (lastUserPrompt || "").toLowerCase();
+    if (!prompt) return true;
+    if (prompt.includes("humeur :") || prompt.includes("cuisines :")) return false;
+
+    return /(?:\bavec\b|,|\bet\b|\bpuis\b|\bplus\b|\baccompagn)/.test(prompt) || hasRestaurantBundles;
+  }
+
+  function groupDishesByRestaurant(dishes) {
+    const groups = new Map();
+    dishes.forEach((dish, index) => {
+      const key = dish.store_uuid || dish.store_name || `store-${index}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          firstIndex: index,
+          store_name: dish.store_name || "Restaurant",
+          store_rating: dish.store_rating,
+          store_eta: dish.store_eta,
+          store_action_url: dish.store_action_url,
+          dishes: [],
+        });
+      }
+      groups.get(key).dishes.push(dish);
+    });
+    return [...groups.values()].sort((a, b) => a.firstIndex - b.firstIndex);
+  }
+
+  function renderRestaurantRows(dishes) {
+    const groups = groupDishesByRestaurant(dishes);
+    const wrap = document.createElement("div");
+    wrap.className = "shift-restaurant-rows";
+
+    groups.forEach((group, groupIndex) => {
+      const row = document.createElement("section");
+      row.className = "shift-restaurant-row";
+      row.style.setProperty("--i", groupIndex);
+
+      const header = document.createElement("div");
+      header.className = "shift-restaurant-row-header";
+
+      const titleBlock = document.createElement("div");
+      titleBlock.className = "shift-restaurant-row-title-block";
+
+      const title = document.createElement("div");
+      title.className = "shift-restaurant-row-title";
+      title.textContent = group.store_name || "Restaurant";
+
+      const meta = document.createElement("div");
+      meta.className = "shift-restaurant-row-meta";
+      const metaParts = [];
+      if (group.store_rating) metaParts.push(`★ ${group.store_rating}`);
+      if (group.store_eta) metaParts.push(group.store_eta);
+      metaParts.push(`${group.dishes.length} produit${group.dishes.length > 1 ? "s" : ""}`);
+      meta.textContent = metaParts.join(" • ");
+
+      titleBlock.append(title, meta);
+
+      const summary = document.createElement("div");
+      summary.className = "shift-restaurant-row-summary";
+      summary.textContent = group.dishes.map((dish) => dish.title).join(" • ");
+
+      header.append(titleBlock, summary);
+      row.appendChild(header);
+
+      const track = document.createElement("div");
+      track.className = "shift-restaurant-row-track";
+      group.dishes.forEach((dish, dishIndex) => {
+        track.appendChild(buildCard(dish, dishIndex));
+      });
+
+      row.appendChild(track);
+      wrap.appendChild(row);
+    });
+
+    $stage.appendChild(wrap);
   }
 
   function renderCarousel(dishes) {
@@ -610,8 +698,9 @@
     if (!messages?.length || !$welcome) return;
     $welcome.style.display = "none";
     $experience.style.display = "";
-    let lastText = null, lastDishes = null;
+    let lastText = null, lastDishes = null, lastUserText = null;
     for (const m of messages) {
+      if (m.role === "user" && m.content) lastUserText = m.content;
       if (m.role === "assistant" && m.content) lastText = m.content;
       if (m.role === "assistant" && m.tool_calls) {
         for (const tc of m.tool_calls) {
@@ -621,6 +710,7 @@
         }
       }
     }
+    if (lastUserText) lastUserPrompt = lastUserText;
     if (lastText && $response) $response.innerHTML = lastText.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
     if (lastDishes?.length) renderDishCards(lastDishes);
   }
