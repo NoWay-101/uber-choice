@@ -1,3 +1,4 @@
 extension/config.js
 extension/.env
 *.har
+.playwright-mcp/
