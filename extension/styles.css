@@ -389,7 +389,7 @@
   gap: 18px;
 }
 .shift-grid .shift-card-img-wrap { height: 150px; }
-.shift-grid:hover .shift-card:not(:hover) { opacity: 0.55; transition: opacity 0.25s; }
+/* hover: just green glow on the hovered card, no dimming others */
 
 .shift-load-more {
   display: block;
