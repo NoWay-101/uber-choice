@@ -381,6 +381,67 @@
 .shift-grid:hover .shift-card:not(:hover) { opacity: 0.55; transition: opacity 0.25s; }
 
 /* ═══════════════════════════════════════════════
+   RESTAURANT ROWS
+   ═══════════════════════════════════════════════ */
+.shift-restaurant-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.shift-restaurant-row {
+  background: linear-gradient(180deg, #ffffff 0%, #fbfbfb 100%);
+  border: 1px solid #efefef;
+  border-radius: 22px;
+  padding: 18px;
+  animation: shiftCardIn 0.5s cubic-bezier(0.22,1,0.36,1) backwards;
+  animation-delay: calc(var(--i,0) * 80ms);
+}
+.shift-restaurant-row-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.shift-restaurant-row-title-block {
+  min-width: 0;
+}
+.shift-restaurant-row-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #000;
+  line-height: 1.2;
+}
+.shift-restaurant-row-meta {
+  font-size: 13px;
+  color: #7b7b7b;
+  margin-top: 4px;
+}
+.shift-restaurant-row-summary {
+  max-width: 45%;
+  font-size: 13px;
+  color: #06c167;
+  font-weight: 600;
+  text-align: right;
+  line-height: 1.4;
+}
+.shift-restaurant-row-track {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.shift-restaurant-row-track::-webkit-scrollbar { display: none; }
+.shift-restaurant-row-track .shift-card {
+  min-width: 248px;
+  max-width: 280px;
+  flex-shrink: 0;
+}
+.shift-restaurant-row-track .shift-card-img-wrap { height: 170px; }
+
+/* ═══════════════════════════════════════════════
    CAROUSEL
    ═══════════════════════════════════════════════ */
 .shift-carousel { display: flex; align-items: center; gap: 10px; }
@@ -403,6 +464,17 @@
   font-family: inherit;
 }
 .shift-carousel-arrow:hover { border-color: #06c167; color: #06c167; }
+
+@media (max-width: 900px) {
+  .shift-restaurant-row-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .shift-restaurant-row-summary {
+    max-width: 100%;
+    text-align: left;
+  }
+}
 
 /* ═══════════════════════════════════════════════
    TOP PICKS (3 cards, pick 1)
