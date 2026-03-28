@@ -74,7 +74,7 @@
       case "SHOW_TOP_PICKS": renderTopPicks(msg.callId, msg.title, msg.dishes); break;
       case "SHOW_CHOICES": renderChoices(msg.callId, msg.title, msg.options, msg.allowMultiple); break;
       case "ERROR": showError(msg.message); break;
-      case "CONVERSATION_HISTORY": restoreConversation(msg.messages); break;
+      case "CONVERSATION_HISTORY": /* skip restore — always start fresh */ break;
     }
     return true;
   });
@@ -150,9 +150,9 @@
     shiftRoot.className = "shift-root";
     shiftRoot.style.display = "none";
 
-    // Stop ALL events from bubbling into Uber Eats handlers
+    // Stop events from bubbling UP into Uber Eats handlers (bubble phase, not capture)
     ["click", "mousedown", "mouseup", "keydown", "keyup", "input", "focus", "blur", "submit"].forEach(evt => {
-      shiftRoot.addEventListener(evt, (e) => e.stopPropagation(), true);
+      shiftRoot.addEventListener(evt, (e) => e.stopPropagation());
     });
 
     const catHTML = CATEGORIES.map(c =>
