@@ -96,7 +96,105 @@
   // ═══════════════════════════════════════════════════
 
   let feedEl = null, shiftRoot = null, shiftActive = false, isStreaming = false;
-  let $welcome, $experience, $response, $stage, $textInput, $fab;
+  let $welcome, $experience, $response, $stage, $textInput;
+  let inlineBar = null, activeVoiceInput = null;
+  let typewriterTimer = null;
+
+  const CATEGORY_PLACEHOLDERS = {
+    pizza: [
+      "J'aimerais une <b>pizza</b> avec de la mozza di buffala...",
+      "Une <b>pizza</b> pepperoni bien fromagée...",
+      "Une <b>pizza</b> quatre fromages croustillante...",
+    ],
+    burger: [
+      "Un smash <b>burger</b> bien juteux avec du cheddar...",
+      "Un <b>burger</b> classique bacon-cheese fondant...",
+      "Un double <b>burger</b> avec sauce maison...",
+    ],
+    sushi: [
+      "Un plateau de <b>sushi</b> california rolls et sashimi...",
+      "Des <b>sushi</b> saumon avocat bien frais...",
+      "Un menu <b>sushi</b> mixte avec edamame...",
+    ],
+    asiatique: [
+      "Un bo bun frais avec des nems croustillants...",
+      "Un pad thaï aux crevettes bien <b>asiatique</b>...",
+      "Des raviolis vapeur et riz cantonais...",
+    ],
+    mexicain: [
+      "Des tacos al pastor avec guacamole maison...",
+      "Un burrito <b>mexicain</b> poulet bien garni...",
+      "Des quesadillas fromage et pico de gallo...",
+    ],
+    italien: [
+      "Des penne all'arrabbiata bien relevées...",
+      "Un risotto crémeux aux champignons <b>italien</b>...",
+      "Des lasagnes maison avec bolognaise fondante...",
+    ],
+    indien: [
+      "Un butter chicken bien crémeux avec du naan...",
+      "Un tikka masala <b>indien</b> avec riz basmati...",
+      "Des samosas croustillants et dal onctueux...",
+    ],
+    poulet: [
+      "Du <b>poulet</b> croustillant avec une sauce barbecue...",
+      "Des tenders de <b>poulet</b> avec frites maison...",
+      "Un <b>poulet</b> rôti bien doré avec légumes grillés...",
+    ],
+    healthy: [
+      "Une salade bowl avec avocat et saumon grillé...",
+      "Un buddha bowl <b>healthy</b> quinoa et légumes...",
+      "Un açaï bowl <b>healthy</b> avec granola et fruits...",
+    ],
+    kebab: [
+      "Un <b>kebab</b> galette avec sauce blanche et harissa...",
+      "Un <b>kebab</b> assiette avec frites et salade...",
+      "Un durum <b>kebab</b> bien garni sauce samouraï...",
+    ],
+    "poke bowl": [
+      "Un <b>poke bowl</b> saumon mangue et edamame...",
+      "Un <b>poke bowl</b> thon avocat sauce sésame...",
+      "Un <b>poke bowl</b> crevettes et ananas frais...",
+    ],
+    dessert: [
+      "Un fondant au chocolat avec coeur coulant...",
+      "Une crème brûlée onctueuse en <b>dessert</b>...",
+      "Un tiramisu maison bien café en <b>dessert</b>...",
+    ],
+  };
+  const DEFAULT_PLACEHOLDER = [
+    "<b>Pizza</b> chèvre miel, un truc réconfortant, <b>sushi</b>...",
+    "Un bon <b>burger</b>, des <b>sushi</b>, ou autre chose ?",
+    "Envie de <b>thaï</b>, de <b>mexicain</b>, ou de comfort food ?",
+  ];
+
+  function tokenize(html) {
+    const tokens = [];
+    let i = 0;
+    while (i < html.length) {
+      if (html[i] === '<') {
+        const end = html.indexOf('>', i);
+        tokens.push(html.slice(i, end + 1));
+        i = end + 1;
+      } else {
+        tokens.push(html[i]);
+        i++;
+      }
+    }
+    return tokens;
+  }
+
+  let lastPlaceholder = null;
+
+  function pickRandom(arr) {
+    if (arr.length <= 1) return arr[0];
+    let pick;
+    do {
+      pick = arr[Math.floor(Math.random() * arr.length)];
+    } while (pick === lastPlaceholder);
+    lastPlaceholder = pick;
+    return pick;
+  }
 
   const CATEGORIES = [
     { label: "Pizza", value: "pizza", emoji: "\u{1F355}" },
@@ -162,8 +260,16 @@
       <div class="shift-welcome" id="shiftWelcome">
         <h1 class="shift-title">Qu'est-ce qui te ferait plaisir ?</h1>
         <div class="shift-main-input" id="shiftMainInput">
-          <button class="shift-mic-btn" id="shiftMic" title="Dicte ta commande">\u{1F3A4}</button>
-          <input type="text" id="shiftTextInput" placeholder="Pizza chevre miel, un truc reconfortant, sushi..." />
+          <input type="text" id="shiftTextInput" placeholder="" />
+          <span class="shift-fake-placeholder" id="shiftPlaceholder"></span>
+          <button class="shift-mic-btn" id="shiftMic" title="Dicte ta commande">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </button>
           <button class="shift-send-btn" id="shiftSend">\u2192</button>
         </div>
         <div class="shift-divider"><span>ou laisse-toi guider</span></div>
@@ -193,6 +299,27 @@
     $response = shiftRoot.querySelector("#shiftResponse");
     $stage = shiftRoot.querySelector("#shiftStage");
     $textInput = shiftRoot.querySelector("#shiftTextInput");
+    const $welcomePlaceholder = shiftRoot.querySelector("#shiftPlaceholder");
+
+    // Start typewriter on welcome input + auto-rotation
+    typewriterPlaceholder($welcomePlaceholder, pickRandom(DEFAULT_PLACEHOLDER));
+    startPlaceholderRotation($welcomePlaceholder, DEFAULT_PLACEHOLDER);
+
+    // Show/hide fake placeholder based on input content
+    $textInput.addEventListener("input", () => {
+      if ($textInput.value.length > 0) {
+        $welcomePlaceholder.style.display = "none";
+        stopPlaceholderRotation();
+      } else {
+        $welcomePlaceholder.style.display = "";
+        startPlaceholderRotation($welcomePlaceholder, DEFAULT_PLACEHOLDER);
+      }
+    });
+    $textInput.addEventListener("blur", () => {
+      if ($textInput.value.length === 0) {
+        $welcomePlaceholder.style.display = "";
+      }
+    });
 
     // ── Multi-select for moods AND categories ────────
     const selected = new Set();
@@ -243,7 +370,10 @@
     });
 
     // Mic
-    shiftRoot.querySelector("#shiftMic").addEventListener("click", toggleMic);
+    shiftRoot.querySelector("#shiftMic").addEventListener("click", () => {
+      activeVoiceInput = $textInput;
+      toggleMic();
+    });
 
     // Card clicks → navigate to store page with item hash
     $stage.addEventListener("click", (e) => {
@@ -281,30 +411,177 @@
     // Restart
     shiftRoot.querySelector("#shiftRestart").addEventListener("click", resetAll);
 
+    // Inject inline input bar into the feed
+    injectInlineInput();
+
     return true;
   }
 
-  // ── FAB ─────────────────────────────────────────────
-  function createFAB() {
-    const existing = document.querySelector(".shift-fab");
-    if (existing) return existing;
-    const fab = document.createElement("button");
-    fab.className = "shift-fab";
-    fab.innerHTML = "\u2728 Aide-moi";
-    fab.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!feedEl || !shiftRoot) {
-        // Not on feed page → navigate to feed
-        sessionStorage.setItem("shift-active", "true");
-        window.location.href = "/feed";
-        return;
+  // ── Inline Input Bar (in-feed) ──────────────────────
+  function findCategorySection(feed) {
+    const categoryNames = CATEGORIES.map(c => c.label.toLowerCase());
+    for (const child of feed.children) {
+      const text = (child.textContent || "").toLowerCase();
+      let matches = 0;
+      for (const name of categoryNames) {
+        if (text.includes(name)) matches++;
       }
-      if (shiftActive) deactivate();
-      else activate();
+      if (matches >= 3) return child;
+    }
+    // Fallback: insert after the 3rd child
+    return feed.children[2] || feed.lastElementChild;
+  }
+
+  let rotationTimer = null;
+
+  function typewriterPlaceholder(overlay, text, speed = 30) {
+    if (typewriterTimer) { clearInterval(typewriterTimer); typewriterTimer = null; }
+
+    const tokens = tokenize(text);
+    let i = 0;
+    overlay.innerHTML = "";
+    overlay.style.display = "";
+    typewriterTimer = setInterval(() => {
+      if (i < tokens.length) {
+        i++;
+        overlay.innerHTML = tokens.slice(0, i).join("");
+      } else {
+        clearInterval(typewriterTimer);
+        typewriterTimer = null;
+      }
+    }, speed);
+  }
+
+  function startPlaceholderRotation(overlay, placeholders, intervalMs = 8000) {
+    if (rotationTimer) { clearInterval(rotationTimer); rotationTimer = null; }
+    if (placeholders.length <= 1) return;
+    rotationTimer = setInterval(() => {
+      if (overlay.style.display === "none") return;
+      backspaceAndType(overlay, pickRandom(placeholders));
+    }, intervalMs);
+  }
+
+  function stopPlaceholderRotation() {
+    if (rotationTimer) { clearInterval(rotationTimer); rotationTimer = null; }
+  }
+
+  function backspaceAndType(overlay, newText, speed = 15) {
+    if (typewriterTimer) { clearInterval(typewriterTimer); typewriterTimer = null; }
+
+    let visibleLen = overlay.textContent.length;
+
+    // Backspace phase — strip visible characters from the end
+    typewriterTimer = setInterval(() => {
+      if (visibleLen > 0) {
+        visibleLen--;
+        // Rebuild: take only visibleLen chars worth of the original tokens
+        const fullText = overlay.textContent;
+        const trimmed = fullText.slice(0, visibleLen);
+        overlay.textContent = trimmed;
+      } else {
+        clearInterval(typewriterTimer);
+        typewriterTimer = null;
+        // Type phase
+        typewriterPlaceholder(overlay, newText, 30);
+      }
+    }, speed);
+  }
+
+  function createInlineInput() {
+    const bar = document.createElement("div");
+    bar.className = "shift-inline-bar";
+    bar.id = "shiftInlineBar";
+    bar.innerHTML = `
+      <p class="shift-inline-label">\u2728 Besoin d'aide pour choisir ?</p>
+      <div class="shift-main-input">
+        <input type="text" id="shiftInlineText" placeholder="" />
+        <span class="shift-fake-placeholder" id="shiftInlinePlaceholder"></span>
+        <button class="shift-mic-btn" id="shiftInlineMic" title="Dicte ta commande">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </button>
+        <button class="shift-send-btn" id="shiftInlineSend">\u2192</button>
+      </div>
+    `;
+    return bar;
+  }
+
+  function injectInlineInput() {
+    if (inlineBar && document.body.contains(inlineBar)) return;
+    if (!feedEl) return;
+
+    const anchor = findCategorySection(feedEl);
+    if (!anchor) return;
+
+    inlineBar = createInlineInput();
+    anchor.insertAdjacentElement("afterend", inlineBar);
+
+    const inlineInput = inlineBar.querySelector("#shiftInlineText");
+    const inlinePlaceholder = inlineBar.querySelector("#shiftInlinePlaceholder");
+
+    // Start typewriter effect on load + auto-rotation
+    let currentInlinePlaceholders = DEFAULT_PLACEHOLDER;
+    typewriterPlaceholder(inlinePlaceholder, pickRandom(DEFAULT_PLACEHOLDER));
+    startPlaceholderRotation(inlinePlaceholder, currentInlinePlaceholders);
+
+    // Show/hide fake placeholder based on input content
+    inlineInput.addEventListener("input", () => {
+      if (inlineInput.value.length > 0) {
+        inlinePlaceholder.style.display = "none";
+        stopPlaceholderRotation();
+      } else {
+        inlinePlaceholder.style.display = "";
+        startPlaceholderRotation(inlinePlaceholder, currentInlinePlaceholders);
+      }
     });
-    document.body.appendChild(fab);
-    return fab;
+    inlineInput.addEventListener("blur", () => {
+      if (inlineInput.value.length === 0) {
+        inlinePlaceholder.style.display = "";
+      }
+    });
+
+    // Listen for category clicks on the Uber Eats category bar
+    if (anchor) {
+      anchor.addEventListener("click", (e) => {
+        const link = e.target.closest("a, button");
+        if (!link) return;
+        const clickedText = (link.textContent || "").trim().toLowerCase();
+        for (const [key, placeholders] of Object.entries(CATEGORY_PLACEHOLDERS)) {
+          if (clickedText.includes(key) || key.includes(clickedText)) {
+            currentInlinePlaceholders = placeholders;
+            backspaceAndType(inlinePlaceholder, pickRandom(placeholders));
+            stopPlaceholderRotation();
+            startPlaceholderRotation(inlinePlaceholder, placeholders);
+            return;
+          }
+        }
+      });
+    }
+
+    inlineBar.querySelector("#shiftInlineSend").addEventListener("click", () => {
+      const text = inlineInput.value.trim();
+      if (!text || isStreaming) return;
+      inlineInput.value = "";
+      inlinePlaceholder.style.display = "";
+      activate();
+      startFlow(text);
+    });
+
+    inlineInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        inlineBar.querySelector("#shiftInlineSend").click();
+      }
+    });
+
+    inlineBar.querySelector("#shiftInlineMic").addEventListener("click", () => {
+      activeVoiceInput = inlineInput;
+      toggleMic();
+    });
   }
 
   function activate() {
@@ -312,10 +589,6 @@
     feedEl.style.display = "none";
     shiftRoot.style.display = "";
     shiftActive = true;
-    if ($fab) {
-      $fab.innerHTML = "\u25A6 Retour au feed";
-      $fab.classList.add("active");
-    }
   }
 
   function deactivate() {
@@ -323,10 +596,6 @@
     feedEl.style.display = "";
     shiftRoot.style.display = "none";
     shiftActive = false;
-    if ($fab) {
-      $fab.innerHTML = "\u2728 Aide-moi";
-      $fab.classList.remove("active");
-    }
   }
 
   // ── Flow Control ────────────────────────────────────
@@ -347,6 +616,8 @@
     const text = $textInput.value.trim();
     if (!text || isStreaming) return;
     $textInput.value = "";
+    const overlay = shiftRoot?.querySelector("#shiftPlaceholder");
+    if (overlay) overlay.style.display = "";
     startFlow(text);
   }
 
@@ -632,9 +903,14 @@
     recognition.continuous = false;
     recognition.onresult = (e) => {
       const transcript = Array.from(e.results).map(r => r[0].transcript).join("");
-      if ($textInput) $textInput.value = transcript;
+      const target = activeVoiceInput || $textInput;
+      if (target) target.value = transcript;
       if (e.results[0].isFinal) {
         stopMic();
+        if (activeVoiceInput && activeVoiceInput.id === "shiftInlineText") {
+          activeVoiceInput.value = "";
+          activate();
+        }
         startFlow(transcript);
       }
     };
@@ -644,22 +920,40 @@
 
   function toggleMic() { isListening ? stopMic() : startMic(); }
 
+  function getOverlayForInput(input) {
+    if (input && input.id === "shiftInlineText") {
+      return inlineBar?.querySelector("#shiftInlinePlaceholder");
+    }
+    return shiftRoot?.querySelector("#shiftPlaceholder");
+  }
+
   function startMic() {
     if (!recognition || isListening) return;
     isListening = true;
     recognition.start();
-    const btn = shiftRoot?.querySelector("#shiftMic");
+    // Highlight the correct mic button
+    const isInline = activeVoiceInput && activeVoiceInput.id === "shiftInlineText";
+    const btn = isInline ? inlineBar?.querySelector("#shiftInlineMic") : shiftRoot?.querySelector("#shiftMic");
     if (btn) btn.classList.add("listening");
-    if ($textInput) $textInput.placeholder = "Je t'ecoute...";
+    const overlay = getOverlayForInput(activeVoiceInput || $textInput);
+    if (overlay) {
+      if (typewriterTimer) { clearInterval(typewriterTimer); typewriterTimer = null; }
+      overlay.innerHTML = "Je t'\u00e9coute...";
+    }
   }
 
   function stopMic() {
     if (!recognition) return;
     isListening = false;
     try { recognition.stop(); } catch (_) {}
-    const btn = shiftRoot?.querySelector("#shiftMic");
-    if (btn) btn.classList.remove("listening");
-    if ($textInput) $textInput.placeholder = "Pizza chevre miel, un truc reconfortant, sushi...";
+    // Reset both mic buttons
+    shiftRoot?.querySelector("#shiftMic")?.classList.remove("listening");
+    inlineBar?.querySelector("#shiftInlineMic")?.classList.remove("listening");
+    const overlay = getOverlayForInput(activeVoiceInput || $textInput);
+    if (overlay) {
+      typewriterPlaceholder(overlay, pickRandom(DEFAULT_PLACEHOLDER));
+    }
+    activeVoiceInput = null;
   }
 
   // ── Helpers ─────────────────────────────────────────
@@ -672,9 +966,6 @@
   let initRetries = 0;
 
   function init() {
-    // Always create FAB first, on ANY page
-    if (!$fab) $fab = createFAB();
-
     const injected = injectUI();
 
     if (!injected) {
@@ -683,19 +974,17 @@
         shiftRoot.style.display = "none";
         if (feedEl) feedEl.style.display = "";
         shiftActive = false;
-        if ($fab) { $fab.innerHTML = "\u2728 Aide-moi"; $fab.classList.remove("active"); }
       }
 
       if (++initRetries < 15) { setTimeout(init, 500); return; }
-      console.log("[Shift 2026] FAB only (not on feed)");
+      console.log("[Shift 2026] Not on feed page");
       chrome.runtime.sendMessage({ type: "CONTENT_READY" });
       return;
     }
 
     initVoice();
 
-    const isFeed = /\/(feed|fr\/feed|fr-en\/feed|fr\/?)(\?|$)/.test(window.location.pathname);
-    if (isFeed || sessionStorage.getItem("shift-active") === "true") {
+    if (sessionStorage.getItem("shift-active") === "true") {
       sessionStorage.removeItem("shift-active");
       activate();
     }
@@ -717,12 +1006,19 @@
     setTimeout(() => {
       let lastType = getPageType();
       setInterval(() => {
+        // Re-inject inline bar if Uber Eats re-rendered the feed
+        if (feedEl && inlineBar && !document.body.contains(inlineBar)) {
+          inlineBar = null;
+          injectInlineInput();
+        }
         const currentType = getPageType();
         if (currentType !== lastType) {
           lastType = currentType;
           console.log("[Shift 2026] Page type changed:", currentType);
           if (shiftRoot && shiftRoot.parentElement) shiftRoot.remove();
+          if (inlineBar && inlineBar.parentElement) inlineBar.remove();
           shiftRoot = null;
+          inlineBar = null;
           feedEl = null;
           $welcome = null;
           $experience = null;

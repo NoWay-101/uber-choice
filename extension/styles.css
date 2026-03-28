@@ -12,27 +12,40 @@
 }
 
 /* ═══════════════════════════════════════════════
-   FAB
+   INLINE BAR (in-feed input)
    ═══════════════════════════════════════════════ */
-.shift-fab {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  z-index: 2147483647;
-  background: #06c167;
-  color: #fff;
-  border: none;
-  border-radius: 50px;
-  padding: 12px 22px;
-  font-weight: 700;
-  font-size: 14px;
-  cursor: pointer;
-  box-shadow: 0 4px 16px rgba(6,193,103,0.35);
-  transition: all 0.25s cubic-bezier(0.22,1,0.36,1);
-  font-family: inherit;
+.shift-inline-bar {
+  padding: 36px 24px;
+  margin: 24px 0 0 0;
+  background: transparent;
+  border-top: 1px solid #e8e8e8;
+  text-align: center;
+  animation: shiftFadeUp 0.5s ease;
+  font-family: "UberMove", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  box-sizing: border-box;
+  overflow: hidden;
 }
-.shift-fab:hover { transform: scale(1.05); box-shadow: 0 6px 24px rgba(6,193,103,0.45); }
-.shift-fab.active { background: #545454; box-shadow: 0 4px 16px rgba(0,0,0,0.2); }
+
+.shift-inline-label {
+  font-size: 16px;
+  font-weight: 700;
+  color: #000;
+  margin: 0 0 24px 0;
+}
+
+.shift-inline-bar .shift-main-input {
+  max-width: 100%;
+  margin-bottom: 0;
+  box-sizing: border-box;
+}
+
+.shift-inline-bar .shift-main-input input.typing::after {
+  content: "|";
+}
+
+.shift-inline-bar .shift-main-input input {
+  caret-color: #06c167;
+}
 
 /* ═══════════════════════════════════════════════
    WELCOME
@@ -57,6 +70,7 @@
 
 /* Main input (prominent) */
 .shift-main-input {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -83,6 +97,31 @@
   font-family: inherit;
 }
 .shift-main-input input::placeholder { color: #bbb; }
+
+.shift-fake-placeholder {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
+  color: #bbb;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  font-family: inherit;
+  max-width: calc(100% - 120px);
+}
+.shift-fake-placeholder b {
+  font-weight: 700;
+  color: #999;
+}
+.shift-fake-placeholder::after {
+  content: "|";
+  display: inline;
+  color: #06c167;
+  font-weight: 400;
+  animation: shiftBlink 0.8s infinite;
+}
 
 .shift-section-label {
   font-size: 13px;
@@ -239,8 +278,8 @@
   font-size: 16px;
   font-family: inherit;
 }
-.shift-mic-btn { background: transparent; color: #999; }
-.shift-mic-btn:hover { color: #06c167; }
+.shift-mic-btn { background: transparent; color: #06c167; }
+.shift-mic-btn:hover { color: #05a358; }
 .shift-mic-btn.listening {
   background: #ff4444;
   color: #fff;
