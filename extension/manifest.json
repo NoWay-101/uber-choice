@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Shift 2026",
+  "version": "1.0.0",
+  "description": "AI assistant for Uber Eats - find the perfect dish",
+  "permissions": ["storage"],
+  "host_permissions": ["*://*.ubereats.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.ubereats.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["styles.css"],
+      "matches": ["*://*.ubereats.com/*"]
+    }
+  ]
+}
