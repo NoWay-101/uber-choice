@@ -105,7 +105,9 @@
   }
 
   function handleResolveDishes(selection, header) {
-    const dishes = S.resolveSelection(selection);
+    const allDishes = S.resolveSelection(selection);
+    // Filter out dishes without images
+    const dishes = allDishes.filter((d) => d.image_url);
     if (dishes.length) {
       S.renderDishCards(dishes, header);
     } else {
