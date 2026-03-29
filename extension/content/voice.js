@@ -15,7 +15,12 @@
       const transcript = Array.from(e.results)
         .map((r) => r[0].transcript)
         .join("");
-      if (S.activeVoiceInput) S.activeVoiceInput.value = transcript;
+      if (S.activeVoiceInput) {
+        S.activeVoiceInput.value = transcript;
+        // Hide the placeholder ("Je t'ecoute...") once speech starts
+        const overlay = S.activeVoiceInput.closest(".shift-main-input")?.querySelector(".shift-fake-placeholder");
+        if (overlay && transcript) overlay.style.display = "none";
+      }
       if (e.results[0].isFinal) {
         stopMic();
         if (S.activeVoiceInput) S.activeVoiceInput.value = "";
