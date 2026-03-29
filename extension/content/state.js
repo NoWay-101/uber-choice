@@ -9,19 +9,26 @@
   S.$experience = null;
   S.$response = null;
   S.$stage = null;
+  S.$loadingOverlay = null;
+  S.$loadingFact = null;
+  S.$loadingCard = null;
   S.inlineBar = null;
   S.activeVoiceInput = null;
 
   // State flags
   S.shiftActive = false;
   S.isStreaming = false;
+  S.isLoadingOverlayVisible = false;
   S.lastUserPrompt = "";
 
   // Timers
   S.typewriterTimer = null;
   S.rotationTimer = null;
   S.flowTimeout = null;
+  S.loadingFactsTimer = null;
   S.lastFlowText = "";
+  S.loadingFactQueue = [];
+  S.loadingFactLast = "";
 
   // API cache
   S.storeFeeCache = new Map();

@@ -131,6 +131,11 @@
   }
 
   function resetState() {
+    S.hideLoadingOverlay?.();
+    if (S.flowTimeout) {
+      clearTimeout(S.flowTimeout);
+      S.flowTimeout = null;
+    }
     if (S.shiftRoot && S.shiftRoot.parentElement) S.shiftRoot.remove();
     if (S.inlineBar && S.inlineBar.parentElement) S.inlineBar.remove();
     S.shiftRoot = null;
@@ -139,6 +144,9 @@
     S.$experience = null;
     S.$response = null;
     S.$stage = null;
+    S.$loadingOverlay = null;
+    S.$loadingFact = null;
+    S.$loadingCard = null;
     S.shiftActive = false;
     S.isStreaming = false;
     initRetries = 0;

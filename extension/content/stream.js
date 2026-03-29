@@ -26,6 +26,81 @@
     S.isStreaming = false;
   };
 
+  function shuffleFacts(facts) {
+    const shuffled = facts.slice();
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  }
+
+  function getNextFact() {
+    const facts = Array.isArray(S.LOADING_MARKETING_FACTS)
+      ? S.LOADING_MARKETING_FACTS
+      : [];
+    if (!facts.length) return "";
+
+    if (!S.loadingFactQueue.length) {
+      S.loadingFactQueue = shuffleFacts(facts);
+      if (
+        S.loadingFactQueue.length > 1 &&
+        S.loadingFactQueue[0] === S.loadingFactLast
+      ) {
+        const swapIndex = S.loadingFactQueue.findIndex(
+          (fact) => fact !== S.loadingFactLast
+        );
+        if (swapIndex > 0) {
+          [S.loadingFactQueue[0], S.loadingFactQueue[swapIndex]] = [
+            S.loadingFactQueue[swapIndex],
+            S.loadingFactQueue[0],
+          ];
+        }
+      }
+    }
+
+    const fact = S.loadingFactQueue.shift() || "";
+    S.loadingFactLast = fact;
+    return fact;
+  }
+
+  function renderLoadingFact(text) {
+    if (!S.$loadingFact || !S.$loadingCard) return;
+    S.$loadingFact.textContent = text;
+    S.$loadingCard.classList.remove("is-visible");
+    void S.$loadingCard.offsetWidth;
+    S.$loadingCard.classList.add("is-visible");
+  }
+
+  S.showLoadingOverlay = function () {
+    if (!S.$loadingOverlay) return;
+    if (S.isLoadingOverlayVisible && !S.$loadingOverlay.hidden) return;
+    if (S.loadingFactsTimer) {
+      clearInterval(S.loadingFactsTimer);
+      S.loadingFactsTimer = null;
+    }
+
+    S.isLoadingOverlayVisible = true;
+    S.loadingFactQueue = [];
+    S.$loadingOverlay.hidden = false;
+    renderLoadingFact(getNextFact());
+
+    S.loadingFactsTimer = setInterval(() => {
+      if (!S.isLoadingOverlayVisible) return;
+      renderLoadingFact(getNextFact());
+    }, 5000);
+  };
+
+  S.hideLoadingOverlay = function () {
+    if (S.loadingFactsTimer) {
+      clearInterval(S.loadingFactsTimer);
+      S.loadingFactsTimer = null;
+    }
+    S.isLoadingOverlayVisible = false;
+    S.loadingFactQueue = [];
+    if (S.$loadingOverlay) S.$loadingOverlay.hidden = true;
+  };
+
   // ── Pipeline Progress ───────────────────────────
   const PROGRESS_LABELS = {
     thinking: "Analyse de ta demande...",
@@ -36,11 +111,13 @@
 
   S.showProgress = function (step, count) {
     if (!S.$stage) return;
+    S.showLoadingOverlay();
     // Reset + restart timeout — pipeline is active but we need a safety net
     if (S.flowTimeout) clearTimeout(S.flowTimeout);
     S.flowTimeout = setTimeout(() => {
-      if (S.isStreaming && S.$stage && S.$stage.children.length > 0 && !S.$stage.querySelector(".shift-grid, .shift-carousel, .shift-restaurant-rows, .shift-winner-reveal")) {
+      if (S.isLoadingOverlayVisible && S.$stage && S.$stage.children.length > 0 && !S.$stage.querySelector(".shift-grid, .shift-carousel, .shift-restaurant-rows, .shift-winner-reveal")) {
         S.isStreaming = false;
+        S.hideLoadingOverlay();
         S.$stage.innerHTML = "";
         S.$response.textContent = "";
         S.$response.classList.remove("streaming");
@@ -78,6 +155,7 @@
   };
 
   S.showError = function (msg) {
+    S.hideLoadingOverlay();
     S.finalizeStream();
     console.error("[Shift Error]", msg);
     const target = S.$stage || S.$response;
@@ -98,17 +176,19 @@
     S.$response.classList.remove("streaming");
     S.$stage.innerHTML = "";
     S.isStreaming = true;
+    S.showLoadingOverlay();
     S.scrollTop();
 
     if (S.flowTimeout) clearTimeout(S.flowTimeout);
 
     S.flowTimeout = setTimeout(() => {
       if (
-        S.isStreaming &&
+        S.isLoadingOverlayVisible &&
         S.$stage &&
         S.$stage.children.length === 0
       ) {
         S.isStreaming = false;
+        S.hideLoadingOverlay();
         S.$response.textContent = "";
         S.$response.classList.remove("streaming");
         const retry = document.createElement("div");
@@ -139,6 +219,7 @@
       S.$response.classList.remove("streaming");
     }
     if (S.$stage) S.$stage.innerHTML = "";
+    S.hideLoadingOverlay();
     S.isStreaming = false;
     // Go back to the feed
     S.deactivate();

@@ -67,6 +67,7 @@
   // ── Dish Cards (dispatcher) ─────────────────────
   S.renderDishCards = function (dishes) {
     if (!dishes?.length || !S.$stage) return;
+    S.hideLoadingOverlay?.();
     if (S.flowTimeout) {
       clearTimeout(S.flowTimeout);
       S.flowTimeout = null;

@@ -48,6 +48,16 @@
           <div class="shift-response" id="shiftResponse"></div>
           <div class="shift-stage" id="shiftStage"></div>
         </div>
+        <div class="shift-loading-overlay" id="shiftLoadingOverlay" hidden>
+          <div class="shift-loading-dialog" role="status" aria-live="polite" aria-atomic="true">
+            <div class="shift-loading-spinner" aria-hidden="true"></div>
+            <div class="shift-loading-eyebrow">Transparence Uber Eats</div>
+            <div class="shift-loading-card" id="shiftLoadingCard">
+              <p class="shift-loading-fact" id="shiftLoadingFact"></p>
+            </div>
+            <p class="shift-loading-note">La reponse s'affichera des que la requete sera prete.</p>
+          </div>
+        </div>
         <div class="shift-bottom-bar" id="shiftBottomBar">
           <button class="shift-action-pill" id="shiftRestart" title="Retour au feed">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1"/></svg>
@@ -80,6 +90,9 @@
     S.$experience = S.shiftRoot.querySelector("#shiftExperience");
     S.$response = S.shiftRoot.querySelector("#shiftResponse");
     S.$stage = S.shiftRoot.querySelector("#shiftStage");
+    S.$loadingOverlay = S.shiftRoot.querySelector("#shiftLoadingOverlay");
+    S.$loadingFact = S.shiftRoot.querySelector("#shiftLoadingFact");
+    S.$loadingCard = S.shiftRoot.querySelector("#shiftLoadingCard");
 
     // Google reviews modal listeners
     S.shiftRoot.querySelector("#shiftReviewsClose").addEventListener("click", S.closeReviewsModal);
@@ -112,12 +125,7 @@
       const text = $bottomText.value.trim();
       if (!text || S.isStreaming) return;
       $bottomText.value = "";
-      S.lastUserPrompt = text;
-      S.$response.textContent = "";
-      S.$response.classList.add("streaming");
-      S.$stage.innerHTML = "";
-      S.isStreaming = true;
-      chrome.runtime.sendMessage({ type: "CHAT_MESSAGE", text });
+      S.startFlow(text);
     });
     $bottomText.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {

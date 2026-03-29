@@ -95,4 +95,11 @@
     "Un bon <b>burger</b>, des <b>sushi</b>, ou autre chose ?",
     "Envie de <b>thaï</b>, de <b>mexicain</b>, ou de comfort food ?",
   ];
+
+  S.LOADING_MARKETING_FACTS = [
+    "Uber Eats augmente les prix des produits en fonction de l'affluence et de l'attractivite d'une enseigne.",
+    "Les promotions affichees par Uber Eats favorisent souvent davantage les restaurants que les consommateurs.",
+    "Le COVID-19 a fortement propulse le business d'Uber Eats.",
+    "Uber Eats n'est toujours pas rentable et reste opaque sur ses comptes.",
+  ];
 })(window.Shift);
