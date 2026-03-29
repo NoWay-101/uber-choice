@@ -49,6 +49,9 @@
           sendToTab(tabId, { type: "GOOGLE_ENRICH_RESULT", ...result });
         });
         break;
+      case "COMPARE_DISHES":
+        handleCompare(msg.dish, msg.criteria, tabId);
+        break;
     }
     return true;
   });
@@ -277,6 +280,73 @@
 
     // Max turns reached
     sendToTab(tabId, { type: "ERROR", message: "Trop de tours de conversation." });
+  }
+
+  // ── Compare Handler ─────────────────────────────
+  const CRITERIA_INSTRUCTIONS = {
+    healthy: "L'utilisateur cherche une alternative PLUS SAINE / HEALTHY. Privilegie les plats legers, salades, bowls, grilles, peu de friture, riches en legumes ou proteines maigres.",
+    cheaper: "L'utilisateur cherche une alternative MOINS CHERE. Trie par prix croissant et privilegie le meilleur rapport qualite-prix.",
+    faster: "L'utilisateur cherche une alternative PLUS RAPIDE. Privilegie les restaurants avec le temps de livraison (eta) le plus court.",
+    default: "L'utilisateur cherche des alternatives comparables.",
+  };
+
+  async function handleCompare(dish, criteria, tabId) {
+    try {
+      let compressed;
+
+      // Try to get cached menus from content script
+      sendToTab(tabId, { type: "PROGRESS_COMPARE", step: "searching" });
+      const cacheResult = await callContentScript(tabId, "GET_CACHED_MENUS", {}, 5000);
+      if (cacheResult.compressed) {
+        compressed = cacheResult.compressed;
+      }
+
+      if (!compressed) {
+        // Fresh search needed — derive terms from dish title
+        sendToTab(tabId, { type: "PROGRESS_COMPARE", step: "searching" });
+        const expandResult = await callLLM(
+          "Convertis ce plat en 2-3 termes de recherche Uber Eats. JSON: {\"terms\":[...]}",
+          dish.title
+        );
+        let terms = expandResult?.terms || [dish.title];
+
+        const searchResult = await callContentScript(tabId, "SEARCH_RESTAURANTS", { terms }, 20000);
+        if (searchResult.error || !searchResult.restaurants?.length) {
+          sendToTab(tabId, { type: "COMPARE_ERROR", message: "Aucun restaurant trouvé pour la comparaison." });
+          return;
+        }
+
+        sendToTab(tabId, { type: "PROGRESS_COMPARE", step: "scanning", count: searchResult.restaurants.length });
+        const menuResult = await callContentScript(tabId, "FETCH_MENUS", { restaurants: searchResult.restaurants }, 45000);
+        if (menuResult.error || !menuResult.compressed) {
+          sendToTab(tabId, { type: "COMPARE_ERROR", message: "Impossible de charger les menus." });
+          return;
+        }
+        compressed = menuResult.compressed;
+      }
+
+      // LLM call with comparison prompt + criteria
+      sendToTab(tabId, { type: "PROGRESS_COMPARE", step: "selecting" });
+      const priceStr = dish.price != null ? dish.price.toFixed(2) + "\u20AC" : "?";
+      const criteriaText = CRITERIA_INSTRUCTIONS[criteria] || CRITERIA_INSTRUCTIONS.default;
+      const refInfo = `Plat de reference: "${dish.title}" (${priceStr}) chez "${dish.store_name}"\n\nCritere: ${criteriaText}`;
+      const llmResult = await callLLM(COMPARE_PROMPT, `${refInfo}\n\n${compressed}`);
+
+      if (!llmResult?.dishes?.length) {
+        sendToTab(tabId, { type: "COMPARE_ERROR", message: "Pas d'alternatives trouvées." });
+        return;
+      }
+
+      sendToTab(tabId, {
+        type: "COMPARE_RESULTS",
+        referenceDish: dish,
+        selection: llmResult.dishes,
+        msg: llmResult.msg || "",
+      });
+    } catch (e) {
+      console.error("[Shift BG compare]", e);
+      sendToTab(tabId, { type: "COMPARE_ERROR", message: e.message || "Erreur de comparaison" });
+    }
   }
 
   // ── LLM Call ───────────────────────────────────

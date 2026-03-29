@@ -119,6 +119,9 @@
       const reviewsBtn = e.target.closest(".shift-card-google-reviews-button");
       if (reviewsBtn) { e.preventDefault(); e.stopPropagation(); S.openReviewsModal(reviewsBtn); return; }
 
+      // Compare button clicks — handled by their own listeners via stopPropagation
+      if (e.target.closest(".shift-card-compare-pill, .shift-card-compare-main")) return;
+
       const card = e.target.closest(".shift-card");
       if (!card || card.closest(".shift-top-picks-arena")) return;
       if (card.closest(".shift-popup")) return;
