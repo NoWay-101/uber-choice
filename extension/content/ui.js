@@ -50,7 +50,6 @@
         </div>
         <div class="shift-loading-overlay" id="shiftLoadingOverlay" hidden>
           <div class="shift-loading-dialog" role="status" aria-live="polite">
-            <p class="shift-loading-disclaimer">Shift ne favorise aucun restaurant. Les r\u00E9sultats sont bas\u00E9s uniquement sur ta demande.</p>
             <div class="shift-loading-card">
               <p class="shift-loading-fact" id="shiftLoadingFact"></p>
             </div>

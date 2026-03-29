@@ -83,10 +83,15 @@
     }
 
     S.isLoadingOverlayVisible = true;
-    S.loadingFactQueue = []; // Force re-shuffle so first fact is random each time
-    S.loadingFactLast = "";  // Reset so any fact can appear first
+    S.loadingFactQueue = [];
+    S.loadingFactLast = "";
     S.$loadingOverlay.hidden = false;
-    renderLoadingFact(getNextFact());
+    // Always show the first fact (index 0) first, then shuffle the rest
+    const facts = Array.isArray(S.LOADING_MARKETING_FACTS) ? S.LOADING_MARKETING_FACTS : [];
+    if (facts.length > 0) {
+      renderLoadingFact(facts[0]);
+      S.loadingFactLast = facts[0];
+    }
 
     S.loadingFactsTimer = setInterval(() => {
       if (!S.isLoadingOverlayVisible) return;

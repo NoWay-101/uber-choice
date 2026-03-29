@@ -48,7 +48,8 @@ Tu es un EXPERT culinaire. Ta selection doit etre IRREPROCHABLE :
 ### INCLUSIONS — ce qu'on veut :
 - Des PLATS PRINCIPAUX : burgers, pizzas, bowls, sandwiches, plats, menus, etc.
 - Lis les DESCRIPTIONS pour matcher semantiquement : "La Speciale du Chef" avec desc "chevre, miel, noix" matche "chevre miel"
-- Si tu doutes qu'un plat corresponde → EXCLUS-LE. 3 plats pertinents > 10 plats dont 5 hors-sujet.
+- Si tu doutes qu'un plat corresponde → EXCLUS-LE. Pas de hors-sujet.
+- ESSAIE de proposer au moins 8 plats pertinents si possible. Explore bien tous les menus fournis.
 - Qualite du resto (rating haut = fiable), rapport qualite-prix, variete (max 3 par resto).
 - Si RIEN ne matche → "refine_search" ou "question". JAMAIS de plats non pertinents.
 

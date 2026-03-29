@@ -126,10 +126,10 @@
         console.warn("[Shift] Search failed for:", term, e);
       }
     }
-    // Sort by rating (descending), take top 15
+    // Sort by rating (descending), take top 30
     const topStores = [...allStores.values()]
       .sort((a, b) => parseFloat(b.rating || "0") - parseFloat(a.rating || "0"))
-      .slice(0, 15);
+      .slice(0, 30);
 
     console.log("[Shift] Found", topStores.length, "stores in", Date.now() - t0, "ms");
 
