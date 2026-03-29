@@ -4,14 +4,26 @@
   "version": "1.0.0",
   "description": "AI assistant for Uber Eats - find the perfect dish",
   "permissions": ["storage"],
-  "host_permissions": ["*://*.ubereats.com/*"],
+  "host_permissions": ["*://*.ubereats.com/*", "https://places.googleapis.com/*"],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
       "matches": ["*://*.ubereats.com/*"],
-      "js": ["content.js"],
+      "js": [
+        "content/state.js",
+        "content/api.js",
+        "content/constants.js",
+        "content/helpers.js",
+        "content/placeholder.js",
+        "content/voice.js",
+        "content/google.js",
+        "content/render.js",
+        "content/stream.js",
+        "content/ui.js",
+        "content/init.js"
+      ],
       "css": ["styles.css"],
       "run_at": "document_idle"
     }
