@@ -8,6 +8,8 @@
   ]);
   const REVIEWS_INITIAL_BATCH = 2;
   const REVIEWS_BATCH_SIZE = 2;
+  let cachedPageLocationHref = "";
+  let cachedPageLocation = undefined;
 
   // ── Name Matching ───────────────────────────────
   function normalizePlaceName(value) {
@@ -95,27 +97,147 @@
   }
 
   // ── Location ────────────────────────────────────
-  function getPageLocation() {
-    // Extract lat/lng from Uber Eats pl= param (base64 JSON)
+  function isValidCoordinatePair(latitude, longitude) {
+    return Number.isFinite(latitude)
+      && Number.isFinite(longitude)
+      && Math.abs(latitude) <= 90
+      && Math.abs(longitude) <= 180;
+  }
+
+  function buildLocation(latitude, longitude, source) {
+    if (!isValidCoordinatePair(latitude, longitude)) return null;
+    return { latitude, longitude, source };
+  }
+
+  function parseLocationCandidate(candidate, source) {
+    if (!candidate || typeof candidate !== "object") return null;
+    const latitude = Number(
+      candidate.latitude ?? candidate.lat ?? candidate.centerLat ?? candidate.y
+    );
+    const longitude = Number(
+      candidate.longitude ?? candidate.lng ?? candidate.lon ?? candidate.centerLng ?? candidate.x
+    );
+    return buildLocation(latitude, longitude, source);
+  }
+
+  function extractCoordinatesFromText(text, source) {
+    if (!text) return null;
+    const patterns = [
+      /"latitude"\s*:\s*(-?\d+(?:\.\d+)?)[^]*?"longitude"\s*:\s*(-?\d+(?:\.\d+)?)/i,
+      /"lat"\s*:\s*(-?\d+(?:\.\d+)?)[^]*?"lng"\s*:\s*(-?\d+(?:\.\d+)?)/i,
+      /"lng"\s*:\s*(-?\d+(?:\.\d+)?)[^]*?"lat"\s*:\s*(-?\d+(?:\.\d+)?)/i,
+      /latitude[=:"\s]+(-?\d+(?:\.\d+)?)[^]*?longitude[=:"\s]+(-?\d+(?:\.\d+)?)/i,
+      /lat[=:"\s]+(-?\d+(?:\.\d+)?)[^]*?lng[=:"\s]+(-?\d+(?:\.\d+)?)/i,
+    ];
+    for (const [index, pattern] of patterns.entries()) {
+      const match = text.match(pattern);
+      if (!match) continue;
+      const first = Number(match[1]);
+      const second = Number(match[2]);
+      const location = index === 2
+        ? buildLocation(second, first, source)
+        : buildLocation(first, second, source);
+      if (location) return location;
+    }
+    return null;
+  }
+
+  function extractLocationFromSearchParams() {
     try {
       const url = new URL(window.location.href);
       const pl = url.searchParams.get("pl");
       if (pl) {
-        const json = JSON.parse(atob(pl));
-        if (json.latitude && json.longitude) return { latitude: json.latitude, longitude: json.longitude };
+        const parsed = parseLocationCandidate(JSON.parse(atob(pl)), "url-pl");
+        if (parsed) return parsed;
+      }
+
+      const candidates = [
+        [url.searchParams.get("lat"), url.searchParams.get("lng")],
+        [url.searchParams.get("latitude"), url.searchParams.get("longitude")],
+        [url.searchParams.get("centerLat"), url.searchParams.get("centerLng")],
+      ];
+      for (const [latitudeValue, longitudeValue] of candidates) {
+        const location = buildLocation(Number(latitudeValue), Number(longitudeValue), "url");
+        if (location) return location;
       }
     } catch (_) {}
+    return null;
+  }
 
-    // Fallback: try meta tags or script data
+  function findLocationInObject(value, source, depth) {
+    if (!value || depth > 5) return null;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const nestedLocation = findLocationInObject(item, source, depth + 1);
+        if (nestedLocation) return nestedLocation;
+      }
+      return null;
+    }
+    if (typeof value !== "object") return null;
+
+    const directLocation = parseLocationCandidate(value, source);
+    if (directLocation) return directLocation;
+
+    for (const nestedValue of Object.values(value)) {
+      const nestedLocation = findLocationInObject(nestedValue, source, depth + 1);
+      if (nestedLocation) return nestedLocation;
+    }
+    return null;
+  }
+
+  function extractLocationFromStorage(storage, source) {
+    try {
+      for (let index = 0; index < storage.length; index += 1) {
+        const key = storage.key(index);
+        const value = storage.getItem(key);
+        if (!value) continue;
+
+        const rawLocation = extractCoordinatesFromText(value, source);
+        if (rawLocation) return rawLocation;
+
+        try {
+          const parsed = JSON.parse(value);
+          const parsedLocation = findLocationInObject(parsed, source, 0);
+          if (parsedLocation) return parsedLocation;
+        } catch (_) {}
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  function extractLocationFromScripts() {
     try {
       const scripts = document.querySelectorAll("script");
-      for (const s of scripts) {
-        const m = s.textContent?.match(/"latitude"\s*:\s*(-?\d+\.?\d*)[^]*?"longitude"\s*:\s*(-?\d+\.?\d*)/);
-        if (m) return { latitude: parseFloat(m[1]), longitude: parseFloat(m[2]) };
+      for (const script of scripts) {
+        const text = script.textContent || "";
+        const rawLocation = extractCoordinatesFromText(text, "script");
+        if (rawLocation) return rawLocation;
+
+        const type = script.getAttribute("type") || "";
+        if (!type.includes("json")) continue;
+
+        try {
+          const parsed = JSON.parse(text);
+          const parsedLocation = findLocationInObject(parsed, "script-json", 0);
+          if (parsedLocation) return parsedLocation;
+        } catch (_) {}
       }
     } catch (_) {}
-
     return null;
+  }
+
+  function getPageLocation() {
+    if (cachedPageLocationHref !== window.location.href) {
+      cachedPageLocationHref = window.location.href;
+      cachedPageLocation = undefined;
+    }
+    if (cachedPageLocation !== undefined) return cachedPageLocation;
+    cachedPageLocation = extractLocationFromSearchParams()
+      || extractLocationFromStorage(window.localStorage, "localStorage")
+      || extractLocationFromStorage(window.sessionStorage, "sessionStorage")
+      || extractLocationFromScripts()
+      || null;
+    return cachedPageLocation;
   }
 
   // ── Enrichment ──────────────────────────────────
