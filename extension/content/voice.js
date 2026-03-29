@@ -22,9 +22,8 @@
         if (overlay && transcript) overlay.style.display = "none";
       }
       if (e.results[0].isFinal) {
+        // Keep the text in the input — user validates with Enter or send button
         stopMic();
-        if (S.activeVoiceInput) S.activeVoiceInput.value = "";
-        S.startFlow(transcript);
       }
     };
     recognition.onend = () => stopMic();
