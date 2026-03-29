@@ -161,8 +161,17 @@
       const url = new URL(window.location.href);
       const pl = url.searchParams.get("pl");
       if (pl) {
-        const parsed = parseLocationCandidate(JSON.parse(atob(pl)), "url-pl");
-        if (parsed) return parsed;
+        try {
+          // pl= can be URL-encoded before base64
+          const decoded = decodeURIComponent(pl);
+          const parsed = parseLocationCandidate(JSON.parse(atob(decoded)), "url-pl");
+          if (parsed) return parsed;
+        } catch (_) {}
+        try {
+          // Or just plain base64
+          const parsed = parseLocationCandidate(JSON.parse(atob(pl)), "url-pl");
+          if (parsed) return parsed;
+        } catch (_) {}
       }
 
       const candidates = [
@@ -240,6 +249,23 @@
     return null;
   }
 
+  function extractLocationFromCookies() {
+    try {
+      const match = document.cookie.match(/uev2\.loc=([^;]*)/);
+      if (!match) return null;
+      const json = JSON.parse(decodeURIComponent(match[1]));
+      // uev2.loc has latitude/longitude at root level
+      const loc = parseLocationCandidate(json, "cookie-uev2.loc");
+      if (loc) return loc;
+      // Also check nested address
+      if (json.address) {
+        const addrLoc = parseLocationCandidate(json.address, "cookie-uev2.loc.address");
+        if (addrLoc) return addrLoc;
+      }
+    } catch (_) {}
+    return null;
+  }
+
   function getPageLocation() {
     if (cachedPageLocationHref !== window.location.href) {
       cachedPageLocationHref = window.location.href;
@@ -247,19 +273,24 @@
     }
     if (cachedPageLocation !== undefined) return cachedPageLocation;
     cachedPageLocation = extractLocationFromSearchParams()
+      || extractLocationFromCookies()
       || extractLocationFromStorage(window.localStorage, "localStorage")
       || extractLocationFromStorage(window.sessionStorage, "sessionStorage")
       || extractLocationFromScripts()
       || null;
+    if (cachedPageLocation) {
+      console.log("[Shift Google] Location found via", cachedPageLocation.source, ":", cachedPageLocation.latitude, cachedPageLocation.longitude);
+    } else {
+      console.warn("[Shift Google] No location found anywhere");
+    }
     return cachedPageLocation;
   }
 
   // ── Enrichment ──────────────────────────────────
-  // Track if Google is disabled (no API key)
-  let googleDisabled = false;
+  // No persistent disable — always try (background will return disabled:true if no key)
 
   S.enrichRestaurantsWithGooglePlaces = async function (restaurants) {
-    if (!restaurants?.length || googleDisabled) return restaurants;
+    if (!restaurants?.length) return restaurants;
 
     const location = getPageLocation();
     if (!location) {
@@ -306,8 +337,7 @@
       });
 
       if (response.disabled) {
-        googleDisabled = true;
-        console.log("[Shift Google] Disabled (no API key)");
+        console.log("[Shift Google] Disabled (no API key in background)");
         return restaurants;
       }
 
