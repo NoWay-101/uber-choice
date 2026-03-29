@@ -60,13 +60,21 @@
     } catch (_) {}
     const wrapper = S.activeVoiceInput?.closest(".shift-main-input");
     wrapper?.querySelector(".shift-mic-btn")?.classList.remove("listening");
+    const input = S.activeVoiceInput;
     const overlay = wrapper?.querySelector(".shift-fake-placeholder");
     if (overlay) {
-      var ph = S.shiftActive
-        ? (S.activeBottomPlaceholders || S.DEFAULT_BOTTOM_PLACEHOLDERS)
-        : S.DEFAULT_PLACEHOLDER;
-      S.typewriterPlaceholder(overlay, S.pickRandom(ph));
-      S.startPlaceholderRotation(overlay, ph);
+      if (input && input.value.trim().length > 0) {
+        // Text in input — keep placeholder hidden
+        overlay.style.display = "none";
+      } else {
+        // Empty input — restore placeholder
+        overlay.style.display = "";
+        var ph = S.shiftActive
+          ? (S.activeBottomPlaceholders || S.DEFAULT_BOTTOM_PLACEHOLDERS)
+          : S.DEFAULT_PLACEHOLDER;
+        S.typewriterPlaceholder(overlay, S.pickRandom(ph));
+        S.startPlaceholderRotation(overlay, ph);
+      }
     }
     S.activeVoiceInput = null;
   }
