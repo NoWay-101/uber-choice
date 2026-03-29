@@ -349,11 +349,12 @@
     const title = titleEl?.textContent?.trim() || "";
     if (!title) return null;
 
-    // Find price — look for €
+    // Find price — match both "12,90 €" (fr) and "€12.90" (en)
     let price = null;
-    const priceMatch = dialog.textContent.match(/([\d]+[.,]\d{2})\s*\u20AC/);
+    const priceMatch = dialog.textContent.match(/([\d]+[.,]\d{2})\s*\u20AC|\u20AC\s*([\d]+[.,]\d{2})/);
     if (priceMatch) {
-      price = parseFloat(priceMatch[1].replace(",", "."));
+      const raw = priceMatch[1] || priceMatch[2];
+      price = parseFloat(raw.replace(",", "."));
     }
 
     // Find image
@@ -393,7 +394,8 @@
     if (dialog.querySelector(".shift-native-compare-btn")) return;
 
     // Check if this looks like an item detail modal (has price + image)
-    const hasPrice = /\d+[.,]\d{2}\s*\u20AC/.test(dialog.textContent);
+    // Match both "12,90 €" (fr) and "€12.90" (en) formats
+    const hasPrice = /\d+[.,]\d{2}\s*\u20AC|\u20AC\s*\d+[.,]\d{2}/.test(dialog.textContent);
     const hasImage = dialog.querySelector('img[src*="cloudfront"], img[src*="uber"], img[src*="tbcdn"], picture img');
     if (!hasPrice || !hasImage) return;
 
