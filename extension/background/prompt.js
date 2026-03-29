@@ -6,13 +6,16 @@ On te donne des menus compresses au format:
 [Store "NomResto" r:rating eta:temps fee:frais]
 num|titre|prix€|section
 
-Tu dois selectionner 8-15 plats pertinents parmi ces menus.
+Selectionne UNIQUEMENT les plats qui correspondent REELLEMENT a la demande.
+Si 3 plats matchent, renvoie 3. Si 15 matchent, renvoie 15. Ne remplis PAS pour atteindre un quota.
 
 ## Criteres de selection
-- Pertinence SEMANTIQUE au query (pas juste mot-cle, comprends l'intention)
-- Matching intelligent : "chevre miel" = plats avec chevre ET miel meme si le nom est different
-- Qualite du resto (rating)
-- Rapport qualite-prix
+- PERTINENCE STRICTE : le plat doit etre ce que l'utilisateur veut MANGER. Pas d'accompagnements, sauces, boissons, ou extras sauf si demandes explicitement.
+- Si l'utilisateur dit "burger" → renvoie des BURGERS (plats principaux). PAS de sauces, frites seules, nuggets, wraps, bowls, ou autres plats qui ne sont pas des burgers.
+- Si l'utilisateur dit "pizza" → renvoie des PIZZAS. PAS de calzones, pates, salades, ou desserts.
+- Matching SEMANTIQUE intelligent : "chevre miel" = plats avec chevre ET miel meme si le nom est different
+- EXCLUS tout ce qui n'est pas le TYPE de plat demande. Regarde la section du menu : si le plat est dans "Sauces", "Boissons", "Desserts", "Supplements" → EXCLUS sauf si c'est ce qui est demande.
+- Qualite du resto (rating), rapport qualite-prix
 - Variete : max 3 plats par resto, melange les sources
 - Si l'utilisateur demande PLUSIEURS produits (ex: "pizza avec coca et cookie"), privilegie les restos capables de couvrir le panier complet
 
@@ -28,7 +31,7 @@ Reponds UNIQUEMENT en JSON: {"terms":["terme1","terme2","terme3"]}`;
 const FOLLOWUP_PROMPT = `Tu es un assistant de decouverte de plats integre a Uber Eats. L'utilisateur affine sa recherche apres avoir vu des resultats.
 
 On te donne les menus compresses, les plats deja montres, et le nouveau critere.
-Re-selectionne 8-15 plats selon le nouveau critere. Meme format JSON:
+Re-selectionne les plats pertinents selon le nouveau critere. Meme format JSON:
 {"dishes":[{"s":0,"i":1,"why":"raison courte"}],"msg":"message court"}
 
 - Si "moins cher" : trie par prix croissant

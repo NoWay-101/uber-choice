@@ -612,7 +612,7 @@
    ═══════════════════════════════════════════════ */
 .shift-restaurant-rows {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 18px;
 }
 .shift-restaurant-row {
@@ -622,6 +622,13 @@
   padding: 18px;
   animation: shiftCardIn 0.5s cubic-bezier(0.22,1,0.36,1) backwards;
   animation-delay: calc(var(--i,0) * 80ms);
+  /* Adapt width to content: single-dish rows can sit side by side */
+  flex: 1 1 auto;
+  min-width: 280px;
+}
+/* Rows with many dishes take full width */
+.shift-restaurant-row.full-width {
+  flex-basis: 100%;
 }
 .shift-restaurant-row-header {
   display: flex;

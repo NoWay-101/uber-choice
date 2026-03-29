@@ -134,13 +134,36 @@
     S.menuCache = null;
     S.searchContext = null;
     S.restaurantList = null;
+    S.historyStack = [];
     if (S.$response) {
       S.$response.textContent = "";
       S.$response.classList.remove("streaming");
     }
     if (S.$stage) S.$stage.innerHTML = "";
     S.isStreaming = false;
+    S.updateBackButton();
     // Go back to the feed
     S.deactivate();
   };
+
+  // ── History Back ────────────────────────────────
+  S.goBack = function () {
+    if (S.historyStack.length > 0) {
+      // Restore previous results
+      const prev = S.historyStack.pop();
+      if (S.$stage) S.$stage.innerHTML = prev.stageHTML;
+      if (S.$response) S.$response.innerHTML = prev.responseHTML;
+      S.$response?.classList.remove("streaming");
+      S.isStreaming = false;
+      S.scrollTop();
+      // Tell background to also pop its searchContext
+      chrome.runtime.sendMessage({ type: "HISTORY_BACK" });
+    } else {
+      // No history → go back to feed
+      S.resetAll();
+    }
+  };
+
+  // updateBackButton no longer needed — button is always visible
+  S.updateBackButton = function () {};
 })(window.Shift);

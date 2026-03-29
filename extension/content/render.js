@@ -71,6 +71,16 @@
       clearTimeout(S.flowTimeout);
       S.flowTimeout = null;
     }
+
+    // Save current state to history — only if real results are displayed (not progress/loading)
+    if (S.$stage.children.length > 0 && S.$stage.querySelector(".shift-grid, .shift-carousel, .shift-restaurant-rows, .shift-winner-reveal, .shift-top-picks, .shift-choices")) {
+      S.historyStack.push({
+        stageHTML: S.$stage.innerHTML,
+        responseHTML: S.$response ? S.$response.innerHTML : "",
+      });
+      S.updateBackButton();
+    }
+
     S.$stage.innerHTML = "";
     if (S.$response) {
       S.$response.textContent = "";
@@ -136,6 +146,7 @@
     groups.forEach((group, groupIndex) => {
       const row = document.createElement("section");
       row.className = "shift-restaurant-row";
+      if (group.dishes.length >= 3) row.classList.add("full-width");
       row.style.setProperty("--i", groupIndex);
 
       const header = document.createElement("div");
