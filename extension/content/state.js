@@ -38,6 +38,9 @@
   S.searchContext = null;    // {query, compressed, shownDishes} for follow-ups
   S.restaurantList = null;   // last search results
 
+  // History stack for back navigation
+  S.historyStack = [];
+
   // Google Places cache
   S.googlePlacesByUuid = new Map();
   S.googlePlacesByName = new Map();

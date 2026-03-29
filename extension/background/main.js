@@ -7,6 +7,7 @@
   const MODEL = CONFIG.MODEL;
   const pendingCalls = new Map();
   let searchContext = null;
+  let searchContextHistory = [];
 
   // ── Track active tab ─────────────────────────────
   let activeTabId = null;
@@ -32,6 +33,12 @@
       }
       case "RESET_CONVERSATION":
         searchContext = null;
+        searchContextHistory = [];
+        break;
+      case "HISTORY_BACK":
+        if (searchContextHistory.length > 0) {
+          searchContext = searchContextHistory.pop();
+        }
         break;
       case "GOOGLE_ENRICH":
         handleGoogleEnrich(msg).then((result) => {
@@ -124,7 +131,8 @@
         return;
       }
 
-      // Save context for follow-ups
+      // Save context for follow-ups (push previous to history)
+      if (searchContext) searchContextHistory.push(searchContext);
       searchContext = {
         query: text,
         compressed: menuResult.compressed,
@@ -173,6 +181,8 @@ ${searchContext.compressed}`;
         return;
       }
 
+      // Push previous context before updating
+      if (searchContext) searchContextHistory.push({ ...searchContext });
       searchContext.shownDishes = llmResult.dishes;
 
       if (llmResult.msg) {
