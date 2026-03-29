@@ -41,6 +41,7 @@
   S.historyStack = [];
 
   // Google Places cache
+  S.googlePlacesById = new Map();
   S.googlePlacesByUuid = new Map();
   S.googlePlacesByName = new Map();
 })();

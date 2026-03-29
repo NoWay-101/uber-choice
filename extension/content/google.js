@@ -79,7 +79,8 @@
   }
 
   // ── Cache ───────────────────────────────────────
-  S.getCachedGooglePlace = function (uuid, name) {
+  S.getCachedGooglePlace = function (uuid, name, placeId) {
+    if (placeId && S.googlePlacesById.has(placeId)) return S.googlePlacesById.get(placeId);
     if (uuid && S.googlePlacesByUuid.has(uuid)) return S.googlePlacesByUuid.get(uuid);
     const n = normalizePlaceName(name);
     if (n && S.googlePlacesByName.has(n)) return S.googlePlacesByName.get(n);
@@ -88,12 +89,25 @@
 
   function cachePlace(store, place) {
     if (!place) return;
+    if (place.id) S.googlePlacesById.set(place.id, place);
     const uuid = store?.uuid || store?.store_uuid;
     if (uuid) S.googlePlacesByUuid.set(uuid, place);
     const name = normalizePlaceName(store?.title || store?.store_name || store?.name);
     if (name) S.googlePlacesByName.set(name, place);
     const gName = normalizePlaceName(place.name);
     if (gName) S.googlePlacesByName.set(gName, place);
+  }
+
+  function mergeGooglePlace(basePlace, nextPlace) {
+    if (!basePlace) return nextPlace || null;
+    if (!nextPlace) return basePlace;
+    return {
+      ...basePlace,
+      ...nextPlace,
+      reviews: Array.isArray(nextPlace.reviews) && nextPlace.reviews.length
+        ? nextPlace.reviews
+        : Array.isArray(basePlace.reviews) ? basePlace.reviews : [],
+    };
   }
 
   // ── Location ────────────────────────────────────
@@ -273,7 +287,7 @@
         chrome.runtime.onMessage.addListener(handler);
         chrome.runtime.sendMessage({
           type: "GOOGLE_ENRICH",
-          location,
+          location: location || null,
           radius: 3500,
           limit: 30,
           storeNames,
@@ -347,27 +361,86 @@
     return btn;
   };
 
+  S.fetchGooglePlaceDetails = async function (googlePlace) {
+    if (!googlePlace?.resourceName && !googlePlace?.id) return googlePlace;
+
+    const cached = S.getCachedGooglePlace(null, googlePlace.name, googlePlace.id);
+    if (cached?.reviews?.length) return mergeGooglePlace(googlePlace, cached);
+
+    const requestId = `gpd_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const response = await new Promise((resolve) => {
+      const handler = (msg) => {
+        if (msg.type === "GOOGLE_PLACE_DETAILS_RESULT" && msg.requestId === requestId) {
+          chrome.runtime.onMessage.removeListener(handler);
+          resolve(msg);
+        }
+      };
+      chrome.runtime.onMessage.addListener(handler);
+      chrome.runtime.sendMessage({
+        type: "GOOGLE_PLACE_DETAILS",
+        requestId,
+        placeId: googlePlace.id || null,
+        resourceName: googlePlace.resourceName || null,
+        languageCode: "fr",
+        regionCode: "FR",
+      });
+      setTimeout(() => {
+        chrome.runtime.onMessage.removeListener(handler);
+        resolve({ place: null });
+      }, 5000);
+    });
+
+    const merged = mergeGooglePlace(googlePlace, response.place);
+    cachePlace(null, merged);
+    return merged;
+  };
+
   // ── Reviews Modal ───────────────────────────────
-  S.openReviewsModal = function (button) {
+  S.openReviewsModal = async function (button) {
     const modal = S.shiftRoot?.querySelector("#shiftReviewsModal");
     if (!modal || !button?.dataset?.googlePlace) return;
 
     let gPlace;
     try { gPlace = JSON.parse(decodeURIComponent(button.dataset.googlePlace)); } catch (_) { return; }
 
-    const reviews = Array.isArray(gPlace?.reviews) ? gPlace.reviews : [];
+    const cachedPlace = S.getCachedGooglePlace(null, gPlace.name, gPlace.id);
+    if (cachedPlace) gPlace = mergeGooglePlace(gPlace, cachedPlace);
+
     modal.querySelector("#shiftReviewsTitle").textContent = gPlace?.name || "Restaurant";
     modal.querySelector("#shiftReviewsSummary").textContent = [
       gPlace?.rating != null ? `Google ${gPlace.rating}/5` : null,
       gPlace?.userRatingCount != null ? `${Number(gPlace.userRatingCount).toLocaleString("fr-FR")} avis` : null,
     ].filter(Boolean).join(" \u2022 ");
 
+    const initialReviews = Array.isArray(gPlace?.reviews) ? gPlace.reviews : [];
+    modal._reviews = initialReviews;
+    modal._visibleCount = Math.min(REVIEWS_INITIAL_BATCH, initialReviews.length);
+    if (initialReviews.length) {
+      renderReviewsList(modal);
+    } else {
+      modal.querySelector("#shiftReviewsList").innerHTML = '<div class="shift-reviews-empty">Chargement des avis Google...</div>';
+      modal.querySelector("#shiftReviewsActions").hidden = true;
+    }
+
+    const requestToken = `reviews_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    modal._requestToken = requestToken;
+    modal.hidden = false;
+    requestAnimationFrame(() => modal.classList.add("is-open"));
+
+    if (initialReviews.length || (!gPlace?.resourceName && !gPlace?.id)) return;
+
+    const detailedPlace = await S.fetchGooglePlaceDetails(gPlace);
+    if (modal._requestToken !== requestToken) return;
+
+    const reviews = Array.isArray(detailedPlace?.reviews) ? detailedPlace.reviews : [];
+    modal.querySelector("#shiftReviewsTitle").textContent = detailedPlace?.name || gPlace?.name || "Restaurant";
+    modal.querySelector("#shiftReviewsSummary").textContent = [
+      detailedPlace?.rating != null ? `Google ${detailedPlace.rating}/5` : null,
+      detailedPlace?.userRatingCount != null ? `${Number(detailedPlace.userRatingCount).toLocaleString("fr-FR")} avis` : null,
+    ].filter(Boolean).join(" \u2022 ");
     modal._reviews = reviews;
     modal._visibleCount = Math.min(REVIEWS_INITIAL_BATCH, reviews.length);
     renderReviewsList(modal);
-
-    modal.hidden = false;
-    requestAnimationFrame(() => modal.classList.add("is-open"));
   };
 
   S.closeReviewsModal = function () {
@@ -375,6 +448,7 @@
     if (!modal) return;
     modal.classList.remove("is-open");
     modal.hidden = true;
+    modal._requestToken = null;
     modal._reviews = [];
     modal._visibleCount = 0;
   };

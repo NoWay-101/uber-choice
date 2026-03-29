@@ -59,14 +59,13 @@
           <span>${S.esc(dish.store_name || "")}</span>
           ${dish.store_rating ? `<span class="shift-card-rating">\u2605 ${S.esc(dish.store_rating)}</span>` : ""}
           ${dish.store_eta ? `<span>${S.esc(dish.store_eta)}</span>` : ""}
-          ${dish.google_rating ? `<span class="shift-card-google-rating">Google ${S.esc(String(dish.google_rating))}/5</span>` : ""}
         </div>
       </div>`;
 
     // Add Google reviews button if available
-    if (dish.google_place && dish.google_review_count) {
+    if (dish.google_place) {
       const btn = S.buildGoogleReviewsButton(dish.google_place);
-      if (btn) card.querySelector(".shift-card-meta")?.appendChild(btn);
+      if (btn) card.querySelector(".shift-card-google-actions")?.appendChild(btn);
     }
 
     // Compare: main button + criteria pills

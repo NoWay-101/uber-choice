@@ -3,6 +3,7 @@
 const GOOGLE_MAPS_API_KEY = (typeof CONFIG !== "undefined" && CONFIG.GOOGLE_MAPS_API_KEY) || "";
 const GOOGLE_MAPS_API_URL = "https://places.googleapis.com/v1/places:searchNearby";
 const GOOGLE_TEXT_SEARCH_API_URL = "https://places.googleapis.com/v1/places:searchText";
+const GOOGLE_PLACE_DETAILS_API_URL = "https://places.googleapis.com/v1/";
 const GOOGLE_MAX_REVIEWS = 5;
 const GOOGLE_NEARBY_TYPE_GROUPS = [
   ["restaurant"],
@@ -13,6 +14,12 @@ const GOOGLE_FIELD_MASK = [
   "places.location", "places.rating", "places.userRatingCount", "places.reviews",
   "places.primaryType", "places.primaryTypeDisplayName", "places.types",
   "places.priceLevel", "places.googleMapsUri", "places.websiteUri", "places.businessStatus",
+].join(",");
+const GOOGLE_PLACE_DETAILS_FIELD_MASK = [
+  "id", "name", "displayName", "formattedAddress",
+  "location", "rating", "userRatingCount", "reviews",
+  "primaryType", "primaryTypeDisplayName", "types",
+  "priceLevel", "googleMapsUri", "websiteUri", "businessStatus",
 ].join(",");
 
 function mapGoogleReview(review) {
@@ -76,6 +83,29 @@ async function executeGooglePlacesSearch(url, body) {
   return Array.isArray(data.places) ? data.places.map(mapGooglePlace) : [];
 }
 
+async function fetchGooglePlaceDetails(resourceName, languageCode, regionCode) {
+  if (!GOOGLE_MAPS_API_KEY || !resourceName) return null;
+
+  const url = new URL(resourceName, GOOGLE_PLACE_DETAILS_API_URL);
+  if (languageCode) url.searchParams.set("languageCode", languageCode);
+  if (regionCode) url.searchParams.set("regionCode", regionCode);
+
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+      "X-Goog-FieldMask": GOOGLE_PLACE_DETAILS_FIELD_MASK,
+    },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    console.warn("[Shift Google] Place details error:", data?.error?.message || res.status);
+    return null;
+  }
+  return data?.id ? mapGooglePlace(data) : null;
+}
+
 function dedupePlaces(places) {
   const byId = new Map();
   for (const p of places) {
@@ -133,6 +163,26 @@ async function googleTextSearch(query, location, languageCode, regionCode) {
   }
 }
 
+async function googleTextSearchBatch(storeNames, location, languageCode, regionCode) {
+  if (!Array.isArray(storeNames) || !storeNames.length) return {};
+
+  const settled = await Promise.allSettled(
+    storeNames.map(async (name) => ({
+      name,
+      results: await googleTextSearch(name, location, languageCode, regionCode),
+    }))
+  );
+
+  const textSearchResults = {};
+  for (const entry of settled) {
+    if (entry.status !== "fulfilled") continue;
+    if (entry.value.results.length) {
+      textSearchResults[entry.value.name] = entry.value.results;
+    }
+  }
+  return textSearchResults;
+}
+
 async function handleGoogleEnrich(msg) {
   console.log("[Shift Google BG] handleGoogleEnrich called, key:", GOOGLE_MAPS_API_KEY ? "present" : "MISSING");
   if (!GOOGLE_MAPS_API_KEY) {
@@ -163,5 +213,23 @@ async function handleGoogleEnrich(msg) {
   } catch (e) {
     console.error("[Shift Google BG] Enrichment failed:", e);
     return { places: [], error: e.message };
+  }
+}
+
+async function handleGooglePlaceDetails(msg) {
+  if (!GOOGLE_MAPS_API_KEY) {
+    return { place: null, disabled: true, requestId: msg.requestId || null };
+  }
+  try {
+    const resourceName = msg.resourceName || (msg.placeId ? `places/${msg.placeId}` : "");
+    const place = await fetchGooglePlaceDetails(
+      resourceName,
+      msg.languageCode || "fr",
+      msg.regionCode || "FR"
+    );
+    return { place, requestId: msg.requestId || null };
+  } catch (e) {
+    console.warn("[Shift Google] Place details failed:", e);
+    return { place: null, requestId: msg.requestId || null, error: e.message };
   }
 }

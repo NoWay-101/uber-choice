@@ -49,6 +49,11 @@
           sendToTab(tabId, { type: "GOOGLE_ENRICH_RESULT", ...result });
         });
         break;
+      case "GOOGLE_PLACE_DETAILS":
+        handleGooglePlaceDetails(msg).then((result) => {
+          sendToTab(tabId, { type: "GOOGLE_PLACE_DETAILS_RESULT", ...result });
+        });
+        break;
       case "COMPARE_DISHES":
         handleCompare(msg.dish, msg.criteria, tabId);
         break;
