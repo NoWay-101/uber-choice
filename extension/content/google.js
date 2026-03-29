@@ -248,18 +248,25 @@
     if (!restaurants?.length || googleDisabled) return restaurants;
 
     const location = getPageLocation();
-    if (!location) return restaurants;
+    if (!location) {
+      console.log("[Shift Google] No location, skipping");
+      return restaurants;
+    }
 
     try {
+      console.log("[Shift Google] Enriching", restaurants.length, "restaurants at", location.latitude, location.longitude);
       const storeNames = restaurants
         .filter((r) => !S.getCachedGooglePlace(r.uuid, r.title))
         .map((r) => r.title)
         .slice(0, 10);
 
       const response = await new Promise((resolve) => {
+        let resolved = false;
         const handler = (msg) => {
-          if (msg.type === "GOOGLE_ENRICH_RESULT") {
+          if (msg.type === "GOOGLE_ENRICH_RESULT" && !resolved) {
+            resolved = true;
             chrome.runtime.onMessage.removeListener(handler);
+            console.log("[Shift Google] Got response:", msg.disabled ? "disabled" : (msg.places?.length || 0) + " places");
             resolve(msg);
           }
         };
@@ -273,15 +280,20 @@
           languageCode: "fr",
           regionCode: "FR",
         });
-        // Timeout after 3s — don't block the pipeline
+        // Timeout after 10s — Google API can be slow with text searches
         setTimeout(() => {
-          chrome.runtime.onMessage.removeListener(handler);
-          resolve({ places: [] });
-        }, 3000);
+          if (!resolved) {
+            resolved = true;
+            chrome.runtime.onMessage.removeListener(handler);
+            console.warn("[Shift Google] Timeout after 10s");
+            resolve({ places: [] });
+          }
+        }, 10000);
       });
 
       if (response.disabled) {
-        googleDisabled = true; // Don't try again
+        googleDisabled = true;
+        console.log("[Shift Google] Disabled (no API key)");
         return restaurants;
       }
 

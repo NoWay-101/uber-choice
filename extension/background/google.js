@@ -134,30 +134,34 @@ async function googleTextSearch(query, location, languageCode, regionCode) {
 }
 
 async function handleGoogleEnrich(msg) {
+  console.log("[Shift Google BG] handleGoogleEnrich called, key:", GOOGLE_MAPS_API_KEY ? "present" : "MISSING");
   if (!GOOGLE_MAPS_API_KEY) {
     return { places: [], disabled: true };
   }
   try {
-    // Step 1: Nearby search to get all restaurants around user
+    console.log("[Shift Google BG] Nearby search at", msg.location?.latitude, msg.location?.longitude);
     const nearbyPlaces = await googleNearbySearch(
       msg.location, msg.radius || 3500, msg.limit || 30,
       msg.languageCode || "fr", msg.regionCode || "FR"
     );
+    console.log("[Shift Google BG] Nearby found:", nearbyPlaces.length, "places");
 
-    // Step 2: For stores not matched by nearby, do text search
+    // Text search for stores not found in nearby
     const textSearchResults = {};
-    if (Array.isArray(msg.storeNames)) {
+    if (Array.isArray(msg.storeNames) && msg.storeNames.length > 0) {
+      console.log("[Shift Google BG] Text searching", msg.storeNames.length, "stores");
       for (const name of msg.storeNames) {
         try {
           const results = await googleTextSearch(name, msg.location);
           if (results.length) textSearchResults[name] = results;
         } catch (_) {}
       }
+      console.log("[Shift Google BG] Text search done, found matches for", Object.keys(textSearchResults).length, "stores");
     }
 
     return { places: nearbyPlaces, textSearchResults };
   } catch (e) {
-    console.warn("[Shift Google] Enrichment failed:", e);
+    console.error("[Shift Google BG] Enrichment failed:", e);
     return { places: [], error: e.message };
   }
 }
