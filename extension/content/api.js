@@ -111,8 +111,9 @@
   };
   // ── Pipeline: Search + deduplicate across multiple terms ──
   S.searchAndRank = async function (terms) {
+    console.log("[Shift] searchAndRank:", terms);
+    const t0 = Date.now();
     const allStores = new Map();
-    // Search each term and deduplicate by uuid
     for (const term of terms) {
       try {
         const results = await S.ueFeedSearch(term);
@@ -130,9 +131,13 @@
       .sort((a, b) => parseFloat(b.rating || "0") - parseFloat(a.rating || "0"))
       .slice(0, 15);
 
+    console.log("[Shift] Found", topStores.length, "stores in", Date.now() - t0, "ms");
+
     // Enrich with Google Places (non-blocking)
     try {
-      return await S.enrichRestaurantsWithGooglePlaces(topStores);
+      const enriched = await S.enrichRestaurantsWithGooglePlaces(topStores);
+      console.log("[Shift] Enrichment done in", Date.now() - t0, "ms total");
+      return enriched;
     } catch (e) {
       console.warn("[Shift] Google enrichment failed, continuing without:", e);
       return topStores;
@@ -178,7 +183,8 @@
       lines.push(`[Store "${store.title}" r:${store.rating || "?"} eta:${store.eta || "?"} ${fee ? "fee:" + fee : ""}]`);
       store.items.forEach((item, ii) => {
         const price = item.price != null ? (item.price / 100).toFixed(2) : "?";
-        lines.push(`${ii}|${item.title}|${price}€|${item.section}`);
+        const desc = item.desc ? `|${item.desc}` : "";
+        lines.push(`${ii}|${item.title}|${price}€|${item.section}${desc}`);
       });
       lines.push(""); // blank line between stores
     });

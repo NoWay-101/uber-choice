@@ -14,7 +14,7 @@
         handleFetchMenus(msg.callId, msg.restaurants);
         break;
       case "RESOLVE_DISHES":
-        handleResolveDishes(msg.selection);
+        handleResolveDishes(msg.selection, msg.header);
         break;
       case "PROGRESS":
         S.showProgress(msg.step, msg.count);
@@ -87,10 +87,10 @@
     }
   }
 
-  function handleResolveDishes(selection) {
+  function handleResolveDishes(selection, header) {
     const dishes = S.resolveSelection(selection);
     if (dishes.length) {
-      S.renderDishCards(dishes);
+      S.renderDishCards(dishes, header);
     } else {
       S.showError("Aucun plat trouvé.");
     }
@@ -154,7 +154,6 @@
     S.$stage = null;
     S.$loadingOverlay = null;
     S.$loadingFact = null;
-    S.$loadingCard = null;
     S.shiftActive = false;
     S.isStreaming = false;
     initRetries = 0;

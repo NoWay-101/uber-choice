@@ -65,7 +65,7 @@
   };
 
   // ── Dish Cards (dispatcher) ─────────────────────
-  S.renderDishCards = function (dishes) {
+  S.renderDishCards = function (dishes, header) {
     if (!dishes?.length || !S.$stage) return;
     S.hideLoadingOverlay?.();
     if (S.flowTimeout) {
@@ -89,6 +89,14 @@
     }
     S.isStreaming = false;
     S.scrollTop();
+
+    // Header text above cards (from LLM)
+    if (header) {
+      const h = document.createElement("div");
+      h.className = "shift-results-header";
+      h.textContent = header;
+      S.$stage.appendChild(h);
+    }
 
     if (dishes.length === 1) {
       renderWinner(dishes[0]);
@@ -324,9 +332,10 @@
     S.$stage.appendChild(wrap);
   };
 
-  // ── Choices (clickable options) ──────────────────
-  S.renderChoices = function (callId, title, options, allowMultiple) {
+  // ── Choices (clickable options — always multi-select) ──
+  S.renderChoices = function (callId, title, options) {
     if (!S.$stage) return;
+    S.hideLoadingOverlay?.();
     S.$stage.innerHTML = "";
     if (S.$response) {
       S.$response.textContent = "";
@@ -350,41 +359,46 @@
       const btn = document.createElement("button");
       btn.className = "shift-choice";
       btn.innerHTML = `${opt.icon ? `<span class="shift-choice-icon">${S.esc(opt.icon)}</span>` : ""}${S.esc(opt.label)}`;
-
       btn.addEventListener("click", () => {
-        if (allowMultiple) {
-          btn.classList.toggle("selected");
-          if (sel.has(opt.value)) sel.delete(opt.value);
-          else sel.add(opt.value);
-        } else {
-          btn.classList.add("selected");
-          chrome.runtime.sendMessage({
-            type: "TOOL_RESULT",
-            callId,
-            result: { selected: [opt.value], labels: [opt.label] },
-          });
-        }
+        btn.classList.toggle("selected");
+        if (sel.has(opt.value)) sel.delete(opt.value);
+        else sel.add(opt.value);
       });
       row.appendChild(btn);
     });
 
     wrap.appendChild(row);
 
-    if (allowMultiple) {
-      const confirm = document.createElement("button");
-      confirm.className = "shift-choice-confirm";
-      confirm.textContent = "Valider";
-      confirm.addEventListener("click", () => {
-        if (sel.size > 0) {
-          chrome.runtime.sendMessage({
-            type: "TOOL_RESULT",
-            callId,
-            result: { selected: [...sel] },
-          });
-        }
-      });
-      wrap.appendChild(confirm);
-    }
+    // "Autre..." free text input
+    const otherRow = document.createElement("div");
+    otherRow.className = "shift-choices-other";
+    const otherInput = document.createElement("input");
+    otherInput.type = "text";
+    otherInput.className = "shift-choices-other-input";
+    otherInput.placeholder = "Autre chose ? Dis-moi...";
+    otherRow.appendChild(otherInput);
+    wrap.appendChild(otherRow);
+
+    // Validate button
+    const confirm = document.createElement("button");
+    confirm.className = "shift-choice-confirm";
+    confirm.textContent = "C'est parti";
+    confirm.addEventListener("click", () => {
+      const labels = [...sel];
+      const otherText = otherInput.value.trim();
+      if (otherText) labels.push(otherText);
+      if (labels.length > 0) {
+        chrome.runtime.sendMessage({
+          type: "PIPELINE_RESULT",
+          callId,
+          result: { selected: labels, labels },
+        });
+      }
+    });
+    otherInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); confirm.click(); }
+    });
+    wrap.appendChild(confirm);
 
     S.$stage.appendChild(wrap);
   };

@@ -65,11 +65,13 @@
   }
 
   function renderLoadingFact(text) {
-    if (!S.$loadingFact || !S.$loadingCard) return;
-    S.$loadingFact.textContent = text;
-    S.$loadingCard.classList.remove("is-visible");
-    void S.$loadingCard.offsetWidth;
-    S.$loadingCard.classList.add("is-visible");
+    if (!S.$loadingFact) return;
+    // Fade out, swap text, fade in
+    S.$loadingFact.classList.remove("is-visible");
+    setTimeout(() => {
+      S.$loadingFact.textContent = text;
+      S.$loadingFact.classList.add("is-visible");
+    }, 250);
   }
 
   S.showLoadingOverlay = function () {
@@ -81,7 +83,8 @@
     }
 
     S.isLoadingOverlayVisible = true;
-    S.loadingFactQueue = [];
+    S.loadingFactQueue = []; // Force re-shuffle so first fact is random each time
+    S.loadingFactLast = "";  // Reset so any fact can appear first
     S.$loadingOverlay.hidden = false;
     renderLoadingFact(getNextFact());
 
@@ -115,19 +118,20 @@
     // Reset + restart timeout — pipeline is active but we need a safety net
     if (S.flowTimeout) clearTimeout(S.flowTimeout);
     S.flowTimeout = setTimeout(() => {
-      if (S.isLoadingOverlayVisible && S.$stage && S.$stage.children.length > 0 && !S.$stage.querySelector(".shift-grid, .shift-carousel, .shift-restaurant-rows, .shift-winner-reveal")) {
+      // Only show "not found" if no real content was rendered
+      const hasResults = S.$stage && S.$stage.querySelector(".shift-grid, .shift-carousel, .shift-restaurant-rows, .shift-winner-reveal, .shift-choices, .shift-top-picks");
+      if (S.isLoadingOverlayVisible && !hasResults) {
         S.isStreaming = false;
         S.hideLoadingOverlay();
-        S.$stage.innerHTML = "";
-        S.$response.textContent = "";
-        S.$response.classList.remove("streaming");
+        if (S.$stage) S.$stage.innerHTML = "";
+        if (S.$response) { S.$response.textContent = ""; S.$response.classList.remove("streaming"); }
         const retry = document.createElement("div");
         retry.className = "shift-retry";
         retry.innerHTML = `<p>La recherche n'a pas abouti</p><button class="shift-retry-btn">R\u00E9essayer</button>`;
         retry.querySelector("button").addEventListener("click", () => { retry.remove(); S.startFlow(S.lastFlowText); });
-        S.$stage.appendChild(retry);
+        if (S.$stage) S.$stage.appendChild(retry);
       }
-    }, 20000);
+    }, 45000); // 45s — pipeline with Google + 15 menus + LLM can take a while
     let label = PROGRESS_LABELS[step] || "Chargement...";
     if (step === "scanning" && count) {
       label = `Scan de ${count} restaurants...`;
@@ -200,7 +204,7 @@
         });
         S.$stage.appendChild(retry);
       }
-    }, 20000); // 20s safety timeout
+    }, 45000); // 45s safety timeout
 
     chrome.runtime.sendMessage({ type: "CHAT_MESSAGE", text });
   };

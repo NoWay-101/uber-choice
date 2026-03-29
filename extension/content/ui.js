@@ -49,13 +49,11 @@
           <div class="shift-stage" id="shiftStage"></div>
         </div>
         <div class="shift-loading-overlay" id="shiftLoadingOverlay" hidden>
-          <div class="shift-loading-dialog" role="status" aria-live="polite" aria-atomic="true">
-            <div class="shift-loading-spinner" aria-hidden="true"></div>
-            <div class="shift-loading-eyebrow">Transparence Uber Eats</div>
-            <div class="shift-loading-card" id="shiftLoadingCard">
+          <div class="shift-loading-dialog" role="status" aria-live="polite">
+            <p class="shift-loading-disclaimer">Shift ne favorise aucun restaurant. Les r\u00E9sultats sont bas\u00E9s uniquement sur ta demande.</p>
+            <div class="shift-loading-card">
               <p class="shift-loading-fact" id="shiftLoadingFact"></p>
             </div>
-            <p class="shift-loading-note">La reponse s'affichera des que la requete sera prete.</p>
           </div>
         </div>
         <div class="shift-bottom-bar" id="shiftBottomBar">
@@ -104,7 +102,6 @@
     S.$stage = S.shiftRoot.querySelector("#shiftStage");
     S.$loadingOverlay = S.shiftRoot.querySelector("#shiftLoadingOverlay");
     S.$loadingFact = S.shiftRoot.querySelector("#shiftLoadingFact");
-    S.$loadingCard = S.shiftRoot.querySelector("#shiftLoadingCard");
 
     // Google reviews modal listeners
     S.shiftRoot.querySelector("#shiftReviewsClose").addEventListener("click", S.closeReviewsModal);

@@ -331,10 +331,17 @@
 
 .shift-response {
   text-align: center;
-  font-size: 17px;
+  font-size: 19px;
   color: #000;
   margin-bottom: 20px;
   min-height: 24px;
+}
+.shift-response:not(:empty)::before {
+  content: "\203A  ";
+  color: #06c167;
+  font-weight: 700;
+  font-size: 24px;
+  vertical-align: -1px;
 }
 .shift-response:empty { display: none; }
 .shift-response strong { font-weight: 700; }
@@ -422,84 +429,54 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  background: rgba(255,255,255,0.08);
+  padding: 32px 24px;
 }
 
 .shift-loading-dialog {
-  width: min(100%, 520px);
-  padding: 28px 24px 22px;
-  border-radius: 24px;
-  background: rgba(255,255,255,0.88);
-  border: 1px solid rgba(0,0,0,0.06);
-  box-shadow: 0 20px 60px rgba(0,0,0,0.1);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
   text-align: center;
+  max-width: 440px;
 }
 
-.shift-loading-spinner {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  border: 3px solid rgba(6,193,103,0.16);
-  border-top-color: #06c167;
-  animation: shiftSpin 0.9s linear infinite;
-}
-
-.shift-loading-eyebrow {
-  margin-top: 16px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #06703d;
+.shift-loading-disclaimer {
+  margin: 0 0 20px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: #aaa;
 }
 
 .shift-loading-card {
-  width: 100%;
-  margin-top: 16px;
-  padding: 22px 20px;
-  border-radius: 20px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(240,248,243,0.95));
-  border: 1px solid rgba(6,193,103,0.12);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
-}
-
-.shift-loading-card.is-visible {
-  animation: shiftLoadingFactIn 0.45s cubic-bezier(0.22,1,0.36,1);
+  padding: 18px 22px;
+  border-radius: 14px;
+  background: #fafafa;
+  border: 1px solid #eee;
 }
 
 .shift-loading-fact {
   margin: 0;
-  font-size: 18px;
+  font-size: 17px;
+  line-height: 1.6;
+  font-weight: 500;
+  color: #444;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.shift-loading-fact.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ═══════════════════════════════════════════════
+   RESULTS HEADER (LLM intro text above cards)
+   ═══════════════════════════════════════════════ */
+.shift-results-header {
+  font-size: 15px;
   line-height: 1.5;
-  font-weight: 600;
-  color: #101010;
-}
-
-.shift-loading-note {
-  margin: 14px 0 0;
-  font-size: 13px;
-  line-height: 1.5;
-  color: rgba(0,0,0,0.56);
-}
-
-@keyframes shiftSpin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-@keyframes shiftLoadingFactIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+  color: #888;
+  text-align: center;
+  margin-bottom: 20px;
+  animation: shiftFadeUp 0.3s ease;
 }
 
 /* ═══════════════════════════════════════════════
@@ -876,6 +853,28 @@
   transition: background 0.2s;
 }
 .shift-choice-confirm:hover { background: #05a358; }
+
+.shift-choices-other {
+  width: 100%;
+  max-width: 400px;
+}
+.shift-choices-other-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #eee;
+  border-radius: 50px;
+  font-size: 14px;
+  color: #000;
+  outline: none;
+  font-family: inherit;
+  background: #fff;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+.shift-choices-other-input:focus {
+  border-color: #06c167;
+}
+.shift-choices-other-input::placeholder { color: #bbb; }
 
 /* ═══════════════════════════════════════════════
    WINNER REVEAL

@@ -11,7 +11,6 @@
   S.$stage = null;
   S.$loadingOverlay = null;
   S.$loadingFact = null;
-  S.$loadingCard = null;
   S.inlineBar = null;
   S.activeVoiceInput = null;
 

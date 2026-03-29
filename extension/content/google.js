@@ -241,23 +241,21 @@
   }
 
   // ── Enrichment ──────────────────────────────────
+  // Track if Google is disabled (no API key)
+  let googleDisabled = false;
+
   S.enrichRestaurantsWithGooglePlaces = async function (restaurants) {
-    if (!restaurants?.length) return restaurants;
+    if (!restaurants?.length || googleDisabled) return restaurants;
 
     const location = getPageLocation();
-    if (!location) {
-      console.log("[Shift Google] No location found, skipping enrichment");
-      return restaurants;
-    }
+    if (!location) return restaurants;
 
     try {
-      // Collect store names for text search fallback
       const storeNames = restaurants
         .filter((r) => !S.getCachedGooglePlace(r.uuid, r.title))
         .map((r) => r.title)
         .slice(0, 10);
 
-      // Ask background to call Google Places API
       const response = await new Promise((resolve) => {
         const handler = (msg) => {
           if (msg.type === "GOOGLE_ENRICH_RESULT") {
@@ -275,14 +273,17 @@
           languageCode: "fr",
           regionCode: "FR",
         });
-        // Timeout after 5s — don't block the pipeline
+        // Timeout after 3s — don't block the pipeline
         setTimeout(() => {
           chrome.runtime.onMessage.removeListener(handler);
           resolve({ places: [] });
-        }, 5000);
+        }, 3000);
       });
 
-      if (response.disabled) return restaurants;
+      if (response.disabled) {
+        googleDisabled = true; // Don't try again
+        return restaurants;
+      }
 
       const nearbyPlaces = response.places || [];
       const textResults = response.textSearchResults || {};

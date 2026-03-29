@@ -1,4 +1,4 @@
-// Shift 2026 — Background main (deterministic pipeline + single LLM call)
+// Shift 2026 — Background main (conversational agent pipeline)
 (function () {
   "use strict";
 
@@ -8,6 +8,7 @@
   const pendingCalls = new Map();
   let searchContext = null;
   let searchContextHistory = [];
+  let conversationTurns = []; // short history for multi-turn dialogue
 
   // ── Track active tab ─────────────────────────────
   let activeTabId = null;
@@ -34,11 +35,14 @@
       case "RESET_CONVERSATION":
         searchContext = null;
         searchContextHistory = [];
+        conversationTurns = [];
         break;
       case "HISTORY_BACK":
         if (searchContextHistory.length > 0) {
           searchContext = searchContextHistory.pop();
         }
+        // Also pop last conversation turn
+        if (conversationTurns.length > 0) conversationTurns.pop();
         break;
       case "GOOGLE_ENRICH":
         handleGoogleEnrich(msg).then((result) => {
@@ -73,7 +77,6 @@
   // ── Main Pipeline ───────────────────────────────
   async function handleChat(text, tabId) {
     if (!tabId) {
-      console.error("[Shift BG] No tabId for CHAT_MESSAGE, trying activeTabId");
       tabId = activeTabId;
     }
     if (!tabId) {
@@ -82,132 +85,201 @@
     }
     try {
       const classified = classify(text);
+      console.log("[Shift BG] classify:", text, "→", classified.type, classified.terms);
 
-      // Step 1: Resolve search terms
-      let terms;
+      // Follow-ups reuse existing menus
       if (classified.type === "FOLLOWUP" && searchContext) {
-        return handleFollowup(text, tabId);
-      } else if (classified.type === "FREEFORM") {
-        sendToTab(tabId, { type: "PROGRESS", step: "thinking" });
-        terms = await expandQuery(text);
-        if (!terms?.length) terms = [text];
-      } else {
-        terms = classified.terms;
+        conversationTurns.push({ role: "user", text });
+        return runAgent(tabId, text, searchContext.compressed, true);
       }
 
-      // Step 2: Search restaurants (content script calls Uber Eats API)
+      // Start fresh conversation
+      conversationTurns = [{ role: "user", text }];
+
+      // FREEFORM queries (vague: "je sais pas", "un truc") → ask LLM first, no search
+      if (classified.type === "FREEFORM") {
+        sendToTab(tabId, { type: "PROGRESS", step: "thinking" });
+        await runAgent(tabId, text, "", false);
+        return;
+      }
+
+      // DIRECT/MOOD → search + fetch menus first, then agent
+      const terms = classified.terms;
+
       sendToTab(tabId, { type: "PROGRESS", step: "searching" });
-      const searchResult = await callContentScript(tabId, "SEARCH_RESTAURANTS", { terms }, 15000);
+      console.log("[Shift BG] Searching with terms:", terms);
+      const searchResult = await callContentScript(tabId, "SEARCH_RESTAURANTS", { terms }, 20000);
+      console.log("[Shift BG] Search result:", searchResult.error || `${searchResult.restaurants?.length} restaurants`);
       if (searchResult.error || !searchResult.restaurants?.length) {
         sendToTab(tabId, { type: "ERROR", message: "Aucun restaurant trouvé pour cette recherche." });
         return;
       }
 
-      // Step 3: Fetch menus in parallel (content script)
       sendToTab(tabId, { type: "PROGRESS", step: "scanning", count: searchResult.restaurants.length });
+      console.log("[Shift BG] Fetching menus for", searchResult.restaurants.length, "restaurants");
       const menuResult = await callContentScript(
-        tabId,
-        "FETCH_MENUS",
+        tabId, "FETCH_MENUS",
         { restaurants: searchResult.restaurants },
-        30000
+        45000
       );
+      console.log("[Shift BG] Menu result:", menuResult.error || `${menuResult.compressed?.length} chars`);
       if (menuResult.error || !menuResult.compressed) {
         sendToTab(tabId, { type: "ERROR", message: "Impossible de charger les menus." });
         return;
       }
 
-      // Step 4: Single LLM call — dish selection
-      sendToTab(tabId, { type: "PROGRESS", step: "selecting" });
       const multiItem = classified.multiItem
-        ? "\nL'utilisateur veut un repas complet — privilegie les restos couvrant plusieurs items."
+        ? "\nNote: l'utilisateur veut un repas complet — privilegie les restos couvrant plusieurs items."
         : "";
-      const llmResult = await callLLM(
-        DISH_SELECT_PROMPT + multiItem,
-        `Demande: "${text}"\n\n${menuResult.compressed}`
-      );
+      await runAgent(tabId, text + multiItem, menuResult.compressed, false);
 
-      if (!llmResult?.dishes?.length) {
-        sendToTab(tabId, { type: "ERROR", message: "Pas de plats trouvés pour cette recherche." });
-        return;
-      }
-
-      // Save context for follow-ups (push previous to history)
-      if (searchContext) searchContextHistory.push(searchContext);
-      searchContext = {
-        query: text,
-        compressed: menuResult.compressed,
-        shownDishes: llmResult.dishes,
-      };
-
-      // Step 5: Send selection to content script for resolution + render
-      if (llmResult.msg) {
-        sendToTab(tabId, { type: "STREAM_DELTA", text: llmResult.msg });
-        sendToTab(tabId, { type: "STREAM_DONE" });
-      }
-      sendToTab(tabId, {
-        type: "RESOLVE_DISHES",
-        selection: llmResult.dishes,
-      });
-      if (llmResult.placeholders?.length) {
-        sendToTab(tabId, { type: "UPDATE_PLACEHOLDERS", placeholders: llmResult.placeholders });
-      }
     } catch (e) {
       console.error("[Shift BG]", e);
       sendToTab(tabId, { type: "ERROR", message: e.message || "Erreur inconnue" });
     }
   }
 
-  // ── Follow-up Handler ───────────────────────────
-  async function handleFollowup(text, tabId) {
-    try {
+  // ── Agent Conversation Loop ─────────────────────
+  async function runAgent(tabId, userText, compressed, isFollowup) {
+    const MAX_TURNS = 7;
+
+    for (let turn = 0; turn < MAX_TURNS; turn++) {
       sendToTab(tabId, { type: "PROGRESS", step: "selecting" });
 
-      const shownList = (searchContext.shownDishes || [])
-        .map((d) => `- s${d.s} i${d.i}${d.why ? ": " + d.why : ""}`)
-        .join("\n");
+      // Build user message with conversation history
+      let userMsg;
+      if (turn === 0 && !isFollowup) {
+        userMsg = `Demande: "${userText}"\n\n${compressed}`;
+      } else if (isFollowup && turn === 0) {
+        const shownList = (searchContext?.shownDishes || [])
+          .map((d) => `- s${d.s} i${d.i}${d.why ? ": " + d.why : ""}`)
+          .join("\n");
+        userMsg = `Demande initiale: "${searchContext?.query || ""}"\nPlats deja montres:\n${shownList}\n\nNouveau message: "${userText}"\n\n${compressed}`;
+      } else {
+        // Subsequent turns — include conversation history, menus already known
+        const history = conversationTurns
+          .slice(-4) // max 4 recent turns
+          .map((t) => `${t.role === "user" ? "User" : "Toi"}: ${t.text}`)
+          .join("\n");
+        userMsg = `[Menus deja fournis]\n\nHistorique:\n${history}\n\n${compressed}`;
+      }
 
-      const userMsg = `Demande initiale: "${searchContext.query}"
-Plats deja montres:
-${shownList}
-
-Nouveau critere: "${text}"
-
-${searchContext.compressed}`;
-
-      const llmResult = await callLLM(FOLLOWUP_PROMPT, userMsg);
-
-      if (!llmResult?.dishes?.length) {
-        sendToTab(tabId, { type: "ERROR", message: "Pas de plats trouvés pour ce critère." });
+      console.log("[Shift BG] Agent turn", turn, "calling LLM...");
+      const result = await callLLM(AGENT_PROMPT, userMsg);
+      console.log("[Shift BG] Agent result:", result?.action, result?.msg || "");
+      if (!result?.action) {
+        sendToTab(tabId, { type: "ERROR", message: "Pas de réponse du LLM." });
         return;
       }
 
-      // Push previous context before updating
-      if (searchContext) searchContextHistory.push({ ...searchContext });
-      searchContext.shownDishes = llmResult.dishes;
+      switch (result.action) {
+        case "dishes": {
+          if (!result.dishes?.length) {
+            sendToTab(tabId, { type: "ERROR", message: "Pas de plats pertinents trouvés." });
+            return;
+          }
+          conversationTurns.push({ role: "assistant", text: result.msg || "Voici mes suggestions" });
 
-      if (llmResult.msg) {
-        sendToTab(tabId, { type: "STREAM_DELTA", text: llmResult.msg });
-        sendToTab(tabId, { type: "STREAM_DONE" });
+          // Save context
+          if (searchContext) searchContextHistory.push({ ...searchContext });
+          searchContext = {
+            query: conversationTurns.find((t) => t.role === "user")?.text || userText,
+            compressed,
+            shownDishes: result.dishes,
+          };
+
+          if (result.msg) {
+            sendToTab(tabId, { type: "STREAM_DELTA", text: result.msg });
+            sendToTab(tabId, { type: "STREAM_DONE" });
+          }
+          sendToTab(tabId, { type: "RESOLVE_DISHES", selection: result.dishes, header: result.header || "" });
+          if (result.placeholders?.length) {
+            sendToTab(tabId, { type: "UPDATE_PLACEHOLDERS", placeholders: result.placeholders });
+          }
+          return; // done
+        }
+
+        case "question": {
+          conversationTurns.push({ role: "assistant", text: `Question: ${result.title}` });
+
+          // Show choices and wait for user response
+          const choiceResult = await callContentScript(tabId, "SHOW_CHOICES", {
+            title: result.title || "Que préfères-tu ?",
+            options: result.options || [],
+            allowMultiple: result.allowMultiple || false,
+          }, 60000);
+
+          if (choiceResult.error) {
+            sendToTab(tabId, { type: "ERROR", message: "Pas de réponse." });
+            return;
+          }
+
+          // Add user response to conversation
+          const selectedLabels = choiceResult.labels || choiceResult.selected || [];
+          const userResponse = Array.isArray(selectedLabels) ? selectedLabels.join(", ") : String(selectedLabels);
+          conversationTurns.push({ role: "user", text: userResponse });
+          userText = userResponse;
+
+          // Continue loop — LLM will get the response and decide next action
+          continue;
+        }
+
+        case "message": {
+          conversationTurns.push({ role: "assistant", text: result.msg || "" });
+          if (result.msg) {
+            sendToTab(tabId, { type: "STREAM_DELTA", text: result.msg });
+            sendToTab(tabId, { type: "STREAM_DONE" });
+          }
+          return; // done
+        }
+
+        case "refine_search": {
+          if (!result.terms?.length) {
+            sendToTab(tabId, { type: "ERROR", message: "Pas de termes de recherche." });
+            return;
+          }
+          conversationTurns.push({ role: "assistant", text: result.msg || "Nouvelle recherche..." });
+          if (result.msg) {
+            sendToTab(tabId, { type: "STREAM_DELTA", text: result.msg });
+          }
+
+          // Re-search with new terms
+          sendToTab(tabId, { type: "PROGRESS", step: "searching" });
+          const searchResult = await callContentScript(tabId, "SEARCH_RESTAURANTS", { terms: result.terms }, 15000);
+          if (searchResult.error || !searchResult.restaurants?.length) {
+            sendToTab(tabId, { type: "STREAM_DONE" });
+            sendToTab(tabId, { type: "ERROR", message: "Toujours rien trouvé." });
+            return;
+          }
+
+          sendToTab(tabId, { type: "PROGRESS", step: "scanning", count: searchResult.restaurants.length });
+          const menuResult = await callContentScript(
+            tabId, "FETCH_MENUS",
+            { restaurants: searchResult.restaurants },
+            30000
+          );
+          if (menuResult.error || !menuResult.compressed) {
+            sendToTab(tabId, { type: "STREAM_DONE" });
+            sendToTab(tabId, { type: "ERROR", message: "Impossible de charger les menus." });
+            return;
+          }
+
+          // Update compressed for next turn
+          compressed = menuResult.compressed;
+          continue; // loop again with new menus
+        }
+
+        default:
+          sendToTab(tabId, { type: "ERROR", message: "Réponse inattendue." });
+          return;
       }
-      sendToTab(tabId, {
-        type: "RESOLVE_DISHES",
-        selection: llmResult.dishes,
-      });
-      if (llmResult.placeholders?.length) {
-        sendToTab(tabId, { type: "UPDATE_PLACEHOLDERS", placeholders: llmResult.placeholders });
-      }
-    } catch (e) {
-      console.error("[Shift BG followup]", e);
-      sendToTab(tabId, { type: "ERROR", message: e.message || "Erreur" });
     }
+
+    // Max turns reached
+    sendToTab(tabId, { type: "ERROR", message: "Trop de tours de conversation." });
   }
 
-  // ── LLM Calls ──────────────────────────────────
-  async function expandQuery(text) {
-    const result = await callLLM(QUERY_EXPAND_PROMPT, text);
-    return result?.terms || [];
-  }
-
+  // ── LLM Call ───────────────────────────────────
   async function callLLM(systemPrompt, userMessage) {
     const response = await fetch(`${apiBase}/chat/completions`, {
       method: "POST",
