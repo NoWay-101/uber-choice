@@ -103,6 +103,13 @@
     const injected = S.injectUI();
 
     if (!injected) {
+      // On store pages with quickView params, skip retries and trigger immediately
+      if (getPageType() === "store") {
+        tryOpenQuickView();
+        chrome.runtime.sendMessage({ type: "CONTENT_READY" });
+        return;
+      }
+
       if (S.shiftRoot) {
         S.shiftRoot.style.display = "none";
         if (S.feedEl) S.feedEl.style.display = "";
@@ -127,6 +134,60 @@
 
     chrome.runtime.sendMessage({ type: "CONTENT_READY" });
     console.log("[Shift 2026] Injected");
+  }
+
+  // ── QuickView on Store Pages ─────────────────────
+  function tryOpenQuickView() {
+    const url = new URL(window.location.href);
+    if (!url.pathname.includes("/store/")) return;
+    if (url.searchParams.get("mod") !== "quickView") return;
+
+    const modctx = url.searchParams.get("modctx");
+    if (!modctx) return;
+
+    let ctx;
+    try { ctx = JSON.parse(decodeURIComponent(modctx)); } catch (e) { return; }
+    if (!ctx.itemUuid) return;
+
+    // Clean URL to prevent re-triggering
+    url.searchParams.delete("mod");
+    url.searchParams.delete("modctx");
+    url.searchParams.delete("ps");
+    history.replaceState(null, "", url.toString());
+
+    waitForItemAndClick(ctx.itemUuid);
+  }
+
+  function waitForItemAndClick(itemUuid) {
+    const TIMEOUT = 10000;
+    const POLL_INTERVAL = 200;
+    const start = Date.now();
+
+    function findAndClick() {
+      // Uber Eats menu items are rendered as <a> elements whose href contains the itemUuid
+      const links = document.querySelectorAll('main a[href*="' + itemUuid + '"]');
+      if (links.length) {
+        links[0].click();
+        console.log("[Shift 2026] QuickView triggered for item", itemUuid);
+        return;
+      }
+
+      // Also try buttons/elements with data attributes containing the UUID
+      const els = document.querySelectorAll('[data-item-uuid="' + itemUuid + '"], [data-testid*="' + itemUuid + '"]');
+      if (els.length) {
+        els[0].click();
+        console.log("[Shift 2026] QuickView triggered via data attr for item", itemUuid);
+        return;
+      }
+
+      if (Date.now() - start < TIMEOUT) {
+        setTimeout(findAndClick, POLL_INTERVAL);
+      } else {
+        console.log("[Shift 2026] QuickView timeout — item not found in DOM", itemUuid);
+      }
+    }
+
+    findAndClick();
   }
 
   // ── SPA Navigation Detection ────────────────────
@@ -185,6 +246,9 @@
           lastType = currentType;
           console.log("[Shift 2026] Page type changed:", currentType);
           resetState();
+          if (currentType === "store") {
+            tryOpenQuickView();
+          }
           setTimeout(init, 800);
         }
       }, 500);
