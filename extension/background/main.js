@@ -140,6 +140,9 @@
         type: "RESOLVE_DISHES",
         selection: llmResult.dishes,
       });
+      if (llmResult.placeholders?.length) {
+        sendToTab(tabId, { type: "UPDATE_PLACEHOLDERS", placeholders: llmResult.placeholders });
+      }
     } catch (e) {
       console.error("[Shift BG]", e);
       sendToTab(tabId, { type: "ERROR", message: e.message || "Erreur inconnue" });
@@ -180,6 +183,9 @@ ${searchContext.compressed}`;
         type: "RESOLVE_DISHES",
         selection: llmResult.dishes,
       });
+      if (llmResult.placeholders?.length) {
+        sendToTab(tabId, { type: "UPDATE_PLACEHOLDERS", placeholders: llmResult.placeholders });
+      }
     } catch (e) {
       console.error("[Shift BG followup]", e);
       sendToTab(tabId, { type: "ERROR", message: e.message || "Erreur" });

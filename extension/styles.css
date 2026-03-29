@@ -98,13 +98,12 @@
   max-width: 560px;
   padding: 8px 12px 8px 16px;
   background: #fff;
-  border: 2px solid #eee;
+  border: 2px solid #06c167;
   border-radius: 50px;
   margin-bottom: 24px;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: box-shadow 0.2s;
 }
 .shift-main-input:focus-within {
-  border-color: #06c167;
   box-shadow: 0 0 0 4px rgba(6,193,103,0.08);
 }
 .shift-main-input input {
@@ -942,31 +941,27 @@
   flex-shrink: 0;
 }
 
-.shift-bottom-input {
+.shift-bottom-bar .shift-main-input {
   flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px 6px 16px;
-  background: #f5f5f5;
-  border-radius: 50px;
-  border: 2px solid transparent;
-  transition: border-color 0.2s;
+  width: auto;
+  max-width: none;
+  margin-bottom: 0;
+  padding: 10px 12px 10px 20px;
+  min-width: 0;
 }
-.shift-bottom-input:focus-within {
-  border-color: #06c167;
-  background: #fff;
+.shift-bottom-bar .shift-main-input input {
+  font-size: 15px;
+  caret-color: #06c167;
 }
-.shift-bottom-input input {
-  flex: 1;
-  border: none;
-  background: transparent;
-  font-size: 14px;
-  color: #000;
-  outline: none;
-  font-family: inherit;
+.shift-bottom-bar .shift-fake-placeholder {
+  font-size: 15px;
+  left: 20px;
 }
-.shift-bottom-input input::placeholder { color: #bbb; }
+.shift-bottom-bar .shift-mic-btn,
+.shift-bottom-bar .shift-send-btn {
+  width: 38px;
+  height: 38px;
+}
 
 .shift-action-pill {
   width: 40px;

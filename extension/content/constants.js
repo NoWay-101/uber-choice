@@ -102,4 +102,12 @@
     "Le COVID-19 a fortement propulse le business d'Uber Eats.",
     "Uber Eats n'est toujours pas rentable et reste opaque sur ses comptes.",
   ];
+
+  S.DEFAULT_BOTTOM_PLACEHOLDERS = [
+    "Moins cher ?",
+    "Plus rapide à livrer ?",
+    "Autre chose ?",
+    "Un dessert avec ?",
+    "Sans gluten ?",
+  ];
 })(window.Shift);

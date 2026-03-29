@@ -36,6 +36,14 @@
       case "SHOW_CHOICES":
         S.renderChoices(msg.callId, msg.title, msg.options, msg.allowMultiple);
         break;
+      case "UPDATE_PLACEHOLDERS":
+        if (msg.placeholders?.length && S.$bottomPlaceholder) {
+          S.activeBottomPlaceholders = msg.placeholders;
+          S.stopPlaceholderRotation();
+          S.backspaceAndType(S.$bottomPlaceholder, S.pickRandom(msg.placeholders));
+          S.startPlaceholderRotation(S.$bottomPlaceholder, msg.placeholders);
+        }
+        break;
       case "ERROR":
         S.showError(msg.message);
         break;

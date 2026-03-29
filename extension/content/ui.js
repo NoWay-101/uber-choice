@@ -62,8 +62,17 @@
           <button class="shift-action-pill" id="shiftRestart" title="Retour au feed">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1"/></svg>
           </button>
-          <div class="shift-bottom-input">
-            <input type="text" id="shiftBottomText" placeholder="Affine, demande autre chose..." />
+          <div class="shift-main-input">
+            <input type="text" id="shiftBottomText" placeholder="" />
+            <span class="shift-fake-placeholder" id="shiftBottomPlaceholder"></span>
+            <button class="shift-mic-btn" id="shiftBottomMic" title="Dicte ta commande">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="23"/>
+                <line x1="8" y1="23" x2="16" y2="23"/>
+              </svg>
+            </button>
             <button class="shift-send-btn" id="shiftBottomSend">\u2192</button>
           </div>
         </div>
@@ -121,10 +130,29 @@
 
     // Bottom bar input
     const $bottomText = S.shiftRoot.querySelector("#shiftBottomText");
+    S.$bottomPlaceholder = S.shiftRoot.querySelector("#shiftBottomPlaceholder");
+
+    $bottomText.addEventListener("input", () => {
+      if ($bottomText.value.length > 0) {
+        S.$bottomPlaceholder.style.display = "none";
+        S.stopPlaceholderRotation();
+      } else {
+        S.$bottomPlaceholder.style.display = "";
+        S.startPlaceholderRotation(S.$bottomPlaceholder, S.activeBottomPlaceholders || S.DEFAULT_BOTTOM_PLACEHOLDERS);
+      }
+    });
+    $bottomText.addEventListener("blur", () => {
+      if ($bottomText.value.length === 0) {
+        S.$bottomPlaceholder.style.display = "";
+      }
+    });
+
     S.shiftRoot.querySelector("#shiftBottomSend").addEventListener("click", () => {
       const text = $bottomText.value.trim();
       if (!text || S.isStreaming) return;
       $bottomText.value = "";
+      S.$bottomPlaceholder.style.display = "";
+      S.stopPlaceholderRotation();
       S.startFlow(text);
     });
     $bottomText.addEventListener("keydown", (e) => {
@@ -132,6 +160,12 @@
         e.preventDefault();
         S.shiftRoot.querySelector("#shiftBottomSend").click();
       }
+    });
+
+    // Bottom bar mic
+    S.shiftRoot.querySelector("#shiftBottomMic").addEventListener("click", () => {
+      S.activeVoiceInput = $bottomText;
+      S.toggleMic();
     });
 
     // Restart → go back to feed
@@ -256,10 +290,19 @@
     S.feedEl.style.display = "none";
     S.shiftRoot.style.display = "";
     S.shiftActive = true;
+    // Stop inline placeholder, start bottom bar placeholder
+    S.stopPlaceholderRotation();
+    if (S.$bottomPlaceholder) {
+      var ph = S.activeBottomPlaceholders || S.DEFAULT_BOTTOM_PLACEHOLDERS;
+      S.typewriterPlaceholder(S.$bottomPlaceholder, S.pickRandom(ph));
+      S.startPlaceholderRotation(S.$bottomPlaceholder, ph);
+    }
   };
 
   S.deactivate = function () {
     if (!S.feedEl || !S.shiftRoot) return;
+    S.stopPlaceholderRotation();
+    S.activeBottomPlaceholders = null;
     S.feedEl.style.display = "";
     S.shiftRoot.style.display = "none";
     S.shiftActive = false;

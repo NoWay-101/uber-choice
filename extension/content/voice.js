@@ -34,10 +34,12 @@
     if (!recognition || isListening) return;
     isListening = true;
     recognition.start();
-    const btn = S.inlineBar?.querySelector("#shiftInlineMic");
+    const wrapper = S.activeVoiceInput?.closest(".shift-main-input");
+    const btn = wrapper?.querySelector(".shift-mic-btn");
     if (btn) btn.classList.add("listening");
-    const overlay = S.inlineBar?.querySelector("#shiftInlinePlaceholder");
+    const overlay = wrapper?.querySelector(".shift-fake-placeholder");
     if (overlay) {
+      S.stopPlaceholderRotation();
       if (S.typewriterTimer) {
         clearInterval(S.typewriterTimer);
         S.typewriterTimer = null;
@@ -52,10 +54,15 @@
     try {
       recognition.stop();
     } catch (_) {}
-    S.inlineBar?.querySelector("#shiftInlineMic")?.classList.remove("listening");
-    const overlay = S.inlineBar?.querySelector("#shiftInlinePlaceholder");
+    const wrapper = S.activeVoiceInput?.closest(".shift-main-input");
+    wrapper?.querySelector(".shift-mic-btn")?.classList.remove("listening");
+    const overlay = wrapper?.querySelector(".shift-fake-placeholder");
     if (overlay) {
-      S.typewriterPlaceholder(overlay, S.pickRandom(S.DEFAULT_PLACEHOLDER));
+      var ph = S.shiftActive
+        ? (S.activeBottomPlaceholders || S.DEFAULT_BOTTOM_PLACEHOLDERS)
+        : S.DEFAULT_PLACEHOLDER;
+      S.typewriterPlaceholder(overlay, S.pickRandom(ph));
+      S.startPlaceholderRotation(overlay, ph);
     }
     S.activeVoiceInput = null;
   }

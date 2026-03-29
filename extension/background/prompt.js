@@ -17,10 +17,12 @@ Tu dois selectionner 8-15 plats pertinents parmi ces menus.
 - Si l'utilisateur demande PLUSIEURS produits (ex: "pizza avec coca et cookie"), privilegie les restos capables de couvrir le panier complet
 
 ## Format de reponse — UNIQUEMENT du JSON
-{"dishes":[{"s":0,"i":1,"why":"raison courte 3-5 mots"}],"msg":"message court pour l'utilisateur (5-10 mots)"}
+{"dishes":[{"s":0,"i":1,"why":"raison courte 3-5 mots"}],"msg":"message court pour l'utilisateur (5-10 mots)","placeholders":["suggestion1","suggestion2","suggestion3"]}
 
 s = index du store (0-based), i = numero de ligne du plat dans le store.
-Texte ULTRA court dans msg. Le UI parle pour toi.`;
+Texte ULTRA court dans msg. Le UI parle pour toi.
+placeholders = 3 suggestions courtes (3-6 mots) pour affiner la recherche, liees aux plats selectionnes. Ex: si pizza -> "Moins de 12€ ?", "Avec supplement truffe ?", "Plutot calzone ?"
+`;
 
 const QUERY_EXPAND_PROMPT = `Tu es un assistant Uber Eats. Convertis cette demande en 2-3 termes de recherche concrets pour trouver des restaurants sur Uber Eats. Pense aux types de cuisine et plats specifiques.
 Reponds UNIQUEMENT en JSON: {"terms":["terme1","terme2","terme3"]}`;
@@ -29,7 +31,9 @@ const FOLLOWUP_PROMPT = `Tu es un assistant de decouverte de plats integre a Ube
 
 On te donne les menus compresses, les plats deja montres, et le nouveau critere.
 Re-selectionne 8-15 plats selon le nouveau critere. Meme format JSON:
-{"dishes":[{"s":0,"i":1,"why":"raison courte"}],"msg":"message court"}
+{"dishes":[{"s":0,"i":1,"why":"raison courte"}],"msg":"message court","placeholders":["suggestion1","suggestion2","suggestion3"]}
+
+placeholders = 3 suggestions courtes (3-6 mots) pour affiner encore la recherche.
 
 - Si "moins cher" : trie par prix croissant
 - Si "autre chose" : exclus les plats deja montres
