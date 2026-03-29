@@ -297,37 +297,29 @@
 
   async function handleCompare(dish, criteria, tabId) {
     try {
-      let compressed;
-
-      // Try to get cached menus from content script
+      // Always do a fresh search based on the dish type — cached menus may be from a different search
       sendToTab(tabId, { type: "PROGRESS_COMPARE", step: "searching" });
-      const cacheResult = await callContentScript(tabId, "GET_CACHED_MENUS", {}, 5000);
-      if (cacheResult.compressed) {
-        compressed = cacheResult.compressed;
+
+      // Ask LLM what to search for to find similar dishes
+      const expandResult = await callLLM(
+        "L'utilisateur veut comparer ce plat avec des alternatives similaires dans d'autres restaurants. Donne 2-3 termes de recherche Uber Eats pour trouver des restaurants qui servent ce type de plat. JSON: {\"terms\":[...]}",
+        `${dish.title}${dish.description ? " — " + dish.description : ""}`
+      );
+      let terms = expandResult?.terms || [];
+      if (!terms.length) terms = [dish.title];
+      console.log("[Shift BG compare] Searching with terms:", terms);
+
+      const searchResult = await callContentScript(tabId, "SEARCH_RESTAURANTS", { terms }, 20000);
+      if (searchResult.error || !searchResult.restaurants?.length) {
+        sendToTab(tabId, { type: "COMPARE_ERROR", message: "Aucun restaurant trouvé pour la comparaison." });
+        return;
       }
 
-      if (!compressed) {
-        // Fresh search needed — derive terms from dish title
-        sendToTab(tabId, { type: "PROGRESS_COMPARE", step: "searching" });
-        const expandResult = await callLLM(
-          "Convertis ce plat en 2-3 termes de recherche Uber Eats. JSON: {\"terms\":[...]}",
-          dish.title
-        );
-        let terms = expandResult?.terms || [dish.title];
-
-        const searchResult = await callContentScript(tabId, "SEARCH_RESTAURANTS", { terms }, 20000);
-        if (searchResult.error || !searchResult.restaurants?.length) {
-          sendToTab(tabId, { type: "COMPARE_ERROR", message: "Aucun restaurant trouvé pour la comparaison." });
-          return;
-        }
-
-        sendToTab(tabId, { type: "PROGRESS_COMPARE", step: "scanning", count: searchResult.restaurants.length });
-        const menuResult = await callContentScript(tabId, "FETCH_MENUS", { restaurants: searchResult.restaurants }, 45000);
-        if (menuResult.error || !menuResult.compressed) {
-          sendToTab(tabId, { type: "COMPARE_ERROR", message: "Impossible de charger les menus." });
-          return;
-        }
-        compressed = menuResult.compressed;
+      sendToTab(tabId, { type: "PROGRESS_COMPARE", step: "scanning", count: searchResult.restaurants.length });
+      const menuResult = await callContentScript(tabId, "FETCH_MENUS", { restaurants: searchResult.restaurants }, 45000);
+      if (menuResult.error || !menuResult.compressed) {
+        sendToTab(tabId, { type: "COMPARE_ERROR", message: "Impossible de charger les menus." });
+        return;
       }
 
       // LLM call with comparison prompt + criteria
@@ -336,7 +328,7 @@
       const descStr = dish.description ? `\nDescription: ${dish.description}` : "";
       const criteriaText = CRITERIA_INSTRUCTIONS[criteria] || CRITERIA_INSTRUCTIONS.default;
       const refInfo = `Plat de reference: "${dish.title}" (${priceStr}) chez "${dish.store_name}"${descStr}\n\nCritere: ${criteriaText}`;
-      const llmResult = await callLLM(COMPARE_PROMPT, `${refInfo}\n\n${compressed}`);
+      const llmResult = await callLLM(COMPARE_PROMPT, `${refInfo}\n\n${menuResult.compressed}`);
 
       if (!llmResult?.dishes?.length) {
         sendToTab(tabId, { type: "COMPARE_ERROR", message: "Pas d'alternatives trouvées." });
