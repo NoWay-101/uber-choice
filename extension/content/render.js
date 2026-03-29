@@ -2,6 +2,14 @@
 (function (S) {
   "use strict";
 
+  // ── Compare Criteria ────────────────────────────
+  S.COMPARE_MAIN = { key: "default", label: "Comparer", icon: "\u2696\uFE0F" };
+  S.COMPARE_CRITERIA = [
+    { key: "healthy", label: "Plus healthy", icon: "\u{1F966}" },
+    { key: "cheaper", label: "Moins cher", icon: "\u{1F4B0}" },
+    { key: "faster", label: "Plus rapide", icon: "\u26A1" },
+  ];
+
   // ── Helpers ─────────────────────────────────────
   function buildItemUrl(dish) {
     const base = dish.store_action_url || "";
@@ -60,6 +68,34 @@
       const btn = S.buildGoogleReviewsButton(dish.google_place);
       if (btn) card.querySelector(".shift-card-meta")?.appendChild(btn);
     }
+
+    // Compare: main button + criteria pills
+    const compareWrap = document.createElement("div");
+    compareWrap.className = "shift-card-compare-wrap";
+
+    const mainBtn = document.createElement("button");
+    mainBtn.className = "shift-card-compare-main";
+    mainBtn.textContent = `${S.COMPARE_MAIN.icon} ${S.COMPARE_MAIN.label}`;
+    mainBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      S.openCompareView(dish, S.COMPARE_MAIN.key);
+    });
+    compareWrap.appendChild(mainBtn);
+
+    const pillRow = document.createElement("div");
+    pillRow.className = "shift-card-compare-row";
+    S.COMPARE_CRITERIA.forEach((c) => {
+      const pill = document.createElement("button");
+      pill.className = "shift-card-compare-pill";
+      pill.textContent = `${c.icon} ${c.label}`;
+      pill.addEventListener("click", (e) => {
+        e.stopPropagation();
+        S.openCompareView(dish, c.key);
+      });
+      pillRow.appendChild(pill);
+    });
+    compareWrap.appendChild(pillRow);
+    card.querySelector(".shift-card-body").appendChild(compareWrap);
 
     return card;
   };
@@ -434,7 +470,231 @@
       }
     });
 
+    // Compare: main button + criteria pills in popup
+    const popupCompareWrap = document.createElement("div");
+    popupCompareWrap.className = "shift-popup-compare-wrap";
+    const popupCompareLabel = document.createElement("div");
+    popupCompareLabel.className = "shift-popup-compare-label";
+    popupCompareLabel.textContent = "Trouver mieux ailleurs ?";
+    popupCompareWrap.appendChild(popupCompareLabel);
+
+    const popupMainBtn = document.createElement("button");
+    popupMainBtn.className = "shift-popup-compare-main";
+    popupMainBtn.textContent = `${S.COMPARE_MAIN.icon} ${S.COMPARE_MAIN.label}`;
+    popupMainBtn.addEventListener("click", () => {
+      overlay.remove();
+      S.openCompareView(dish, S.COMPARE_MAIN.key);
+    });
+    popupCompareWrap.appendChild(popupMainBtn);
+
+    const popupCompareRow = document.createElement("div");
+    popupCompareRow.className = "shift-popup-compare-row";
+    S.COMPARE_CRITERIA.forEach((c) => {
+      const btn = document.createElement("button");
+      btn.className = "shift-popup-compare-btn";
+      btn.textContent = `${c.icon} ${c.label}`;
+      btn.addEventListener("click", () => {
+        overlay.remove();
+        S.openCompareView(dish, c.key);
+      });
+      popupCompareRow.appendChild(btn);
+    });
+    popupCompareWrap.appendChild(popupCompareRow);
+    overlay.querySelector(".shift-popup-body").appendChild(popupCompareWrap);
+
     S.shiftRoot.appendChild(overlay);
+  };
+
+  // ── Compare View ────────────────────────────────
+  function getCompareHost() {
+    return S.shiftRoot || document.body;
+  }
+
+  S.openCompareView = function (dish, criteria) {
+    // Remove any existing compare overlay
+    document.querySelector(".shift-compare-overlay")?.remove();
+
+    const criteriaInfo = S.COMPARE_CRITERIA.find((c) => c.key === criteria);
+    const criteriaLabel = criteriaInfo ? `${criteriaInfo.icon} ${criteriaInfo.label}` : "Comparer";
+
+    const overlay = document.createElement("div");
+    overlay.className = "shift-compare-overlay";
+
+    const container = document.createElement("div");
+    container.className = "shift-compare-container";
+
+    // Close button
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "shift-compare-close";
+    closeBtn.textContent = "\u2715";
+    closeBtn.addEventListener("click", () => overlay.remove());
+    container.appendChild(closeBtn);
+
+    // Header
+    const header = document.createElement("div");
+    header.className = "shift-compare-header";
+    header.innerHTML = `<h2 class="shift-compare-title">${S.esc(criteriaLabel)}</h2>`;
+    container.appendChild(header);
+
+    // Two-column layout
+    const columns = document.createElement("div");
+    columns.className = "shift-compare-columns";
+
+    // LEFT: Reference dish
+    const leftCol = document.createElement("div");
+    leftCol.className = "shift-compare-left";
+    leftCol.appendChild(buildCompareCard(dish, true));
+
+    // RIGHT: Loading state, then results
+    const rightCol = document.createElement("div");
+    rightCol.className = "shift-compare-right";
+    rightCol.id = "shiftCompareRight";
+
+    const loading = document.createElement("div");
+    loading.className = "shift-compare-loading";
+    loading.innerHTML = `<div class="shift-loading-spinner"></div><p>Recherche d'alternatives...</p>`;
+    rightCol.appendChild(loading);
+
+    columns.append(leftCol, rightCol);
+    container.appendChild(columns);
+    overlay.appendChild(container);
+
+    // Close on backdrop click or Escape
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) overlay.remove();
+    });
+    const onEsc = (e) => {
+      if (e.key === "Escape" && overlay.parentElement) {
+        overlay.remove();
+        document.removeEventListener("keydown", onEsc);
+      }
+    };
+    document.addEventListener("keydown", onEsc);
+
+    getCompareHost().appendChild(overlay);
+
+    // Trigger the comparison pipeline with criteria
+    chrome.runtime.sendMessage({
+      type: "COMPARE_DISHES",
+      dish: dish,
+      criteria: criteria || "default",
+    });
+  };
+
+  function buildCompareCard(dish, isReference) {
+    const price = dish.price != null ? dish.price.toFixed(2) + "\u00A0\u20AC" : "";
+    const rawFee = dish.store_delivery_fee || S.storeFeeCache.get(dish.store_uuid) || "";
+    const fee = extractFeeAmount(rawFee);
+
+    const card = document.createElement("div");
+    card.className = "shift-compare-card" + (isReference ? " shift-compare-ref" : "");
+
+    card.innerHTML = `
+      ${dish.image_url ? `<img class="shift-compare-card-img" src="${S.esc(dish.image_url)}" />` : '<div class="shift-compare-card-img-placeholder">\u{1F37D}\u{FE0F}</div>'}
+      <div class="shift-compare-card-body">
+        <div class="shift-compare-card-name">${S.esc(dish.title || "")}</div>
+        <div class="shift-compare-card-store">${S.esc(dish.store_name || "")}</div>
+        ${dish.description ? `<div class="shift-compare-card-desc">${S.esc(dish.description)}</div>` : ""}
+        <div class="shift-compare-card-metrics">
+          ${price ? `<div class="shift-compare-metric">
+            <span class="shift-compare-metric-label">Prix</span>
+            <span class="shift-compare-metric-value">${S.esc(price)}</span>
+          </div>` : ""}
+          ${dish.store_rating ? `<div class="shift-compare-metric">
+            <span class="shift-compare-metric-label">Note</span>
+            <span class="shift-compare-metric-value">\u2605 ${S.esc(dish.store_rating)}</span>
+          </div>` : ""}
+          ${dish.store_eta ? `<div class="shift-compare-metric">
+            <span class="shift-compare-metric-label">Livraison</span>
+            <span class="shift-compare-metric-value">${S.esc(dish.store_eta)}</span>
+          </div>` : ""}
+          ${fee ? `<div class="shift-compare-metric">
+            <span class="shift-compare-metric-label">Frais</span>
+            <span class="shift-compare-metric-value">${S.esc(fee)}</span>
+          </div>` : ""}
+          ${dish.google_rating ? `<div class="shift-compare-metric">
+            <span class="shift-compare-metric-label">Google</span>
+            <span class="shift-compare-metric-value">${S.esc(String(dish.google_rating))}/5</span>
+          </div>` : ""}
+        </div>
+      </div>
+    `;
+
+    if (!isReference) {
+      const cta = document.createElement("button");
+      cta.className = "shift-compare-card-cta";
+      cta.textContent = "Voir sur Uber Eats";
+      cta.addEventListener("click", () => {
+        if (dish.store_action_url) {
+          sessionStorage.setItem("shift-active", "true");
+          window.location.href = buildItemUrl(dish);
+        }
+      });
+      card.querySelector(".shift-compare-card-body").appendChild(cta);
+    }
+
+    return card;
+  }
+
+  S.renderCompareView = function (referenceDish, compareDishes, msg) {
+    const rightCol = document.querySelector("#shiftCompareRight");
+    if (!rightCol) return;
+
+    rightCol.innerHTML = "";
+
+    if (msg) {
+      const msgEl = document.createElement("p");
+      msgEl.className = "shift-compare-msg";
+      msgEl.textContent = msg;
+      rightCol.appendChild(msgEl);
+    }
+
+    compareDishes.forEach((dish, i) => {
+      const card = buildCompareCard(dish, false);
+      card.style.setProperty("--i", i);
+
+      // Add price delta indicator
+      if (referenceDish.price != null && dish.price != null) {
+        const delta = dish.price - referenceDish.price;
+        const deltaEl = document.createElement("span");
+        deltaEl.className = "shift-compare-delta " + (delta > 0.01 ? "more" : delta < -0.01 ? "less" : "same");
+        if (Math.abs(delta) > 0.01) {
+          deltaEl.textContent = (delta > 0 ? "+" : "") + delta.toFixed(2) + "\u00A0\u20AC";
+        } else {
+          deltaEl.textContent = "m\u00EAme prix";
+        }
+        const priceValue = card.querySelector(".shift-compare-metric-value");
+        if (priceValue) priceValue.appendChild(deltaEl);
+      }
+
+      rightCol.appendChild(card);
+    });
+  };
+
+  S.hideCompareLoading = function () {
+    const loading = document.querySelector(".shift-compare-loading");
+    if (loading) loading.remove();
+  };
+
+  S.showCompareError = function (msg) {
+    const rightCol = document.querySelector("#shiftCompareRight");
+    if (!rightCol) return;
+    rightCol.innerHTML = "";
+    const el = document.createElement("div");
+    el.className = "shift-compare-error";
+    el.textContent = msg;
+    rightCol.appendChild(el);
+  };
+
+  S.showCompareProgress = function (step) {
+    const loading = document.querySelector(".shift-compare-loading p");
+    if (!loading) return;
+    const labels = {
+      searching: "Recherche de restaurants...",
+      scanning: "Analyse des menus...",
+      selecting: "S\u00E9lection des alternatives...",
+    };
+    loading.textContent = labels[step] || "Recherche d'alternatives...";
   };
 
 })(window.Shift);

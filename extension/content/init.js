@@ -4,7 +4,10 @@
 
   // ── Chrome Message Handler ──────────────────────
   chrome.runtime.onMessage.addListener((msg) => {
-    if (!S.shiftRoot) return true;
+    // Compare messages must work even without shiftRoot (native UE modals)
+    if (!S.shiftRoot && !msg.type.startsWith("COMPARE") && !msg.type.startsWith("PROGRESS_COMPARE")
+        && msg.type !== "GET_CACHED_MENUS" && msg.type !== "SEARCH_RESTAURANTS"
+        && msg.type !== "FETCH_MENUS" && msg.type !== "PIPELINE_RESULT") return true;
     switch (msg.type) {
       // Pipeline messages (background ↔ content)
       case "SEARCH_RESTAURANTS":
@@ -46,6 +49,20 @@
         break;
       case "ERROR":
         S.showError(msg.message);
+        break;
+      // Compare pipeline messages
+      case "GET_CACHED_MENUS":
+        handleGetCachedMenus(msg.callId);
+        break;
+      case "COMPARE_RESULTS":
+        handleCompareResults(msg.referenceDish, msg.selection, msg.msg);
+        break;
+      case "COMPARE_ERROR":
+        S.hideCompareLoading();
+        S.showCompareError(msg.message);
+        break;
+      case "PROGRESS_COMPARE":
+        S.showCompareProgress(msg.step);
         break;
     }
     return true;
@@ -93,6 +110,50 @@
       S.renderDishCards(dishes);
     } else {
       S.showError("Aucun plat trouvé.");
+    }
+  }
+
+  // ── Compare Pipeline Handlers ───────────────────
+  function handleGetCachedMenus(callId) {
+    if (!S.menuCache?.length) {
+      chrome.runtime.sendMessage({ type: "PIPELINE_RESULT", callId, result: { compressed: null } });
+      return;
+    }
+    // Rebuild compressed text from cached menu data
+    const lines = [];
+    S.menuCache.forEach((store, si) => {
+      const fee = store.deliveryFee ? extractFeeShort(store.deliveryFee) : "";
+      lines.push(`[Store "${store.title}" r:${store.rating || "?"} eta:${store.eta || "?"} ${fee ? "fee:" + fee : ""}]`);
+      store.items.forEach((item, ii) => {
+        const price = item.price != null ? (item.price / 100).toFixed(2) : "?";
+        lines.push(`${ii}|${item.title}|${price}\u20AC|${item.section}`);
+      });
+      lines.push("");
+    });
+    chrome.runtime.sendMessage({
+      type: "PIPELINE_RESULT",
+      callId,
+      result: { compressed: lines.join("\n") },
+    });
+  }
+
+  function extractFeeShort(feeStr) {
+    if (!feeStr) return "";
+    const match = feeStr.match(/([\d.,]+)\s*\u20AC/);
+    return match ? match[1] + "\u20AC" : "";
+  }
+
+  function handleCompareResults(referenceDish, selection, msg) {
+    const compareDishes = S.resolveSelection(selection);
+    // Filter out dishes from the same restaurant as reference
+    const filtered = compareDishes.filter((d) => d.store_uuid !== referenceDish.store_uuid);
+    if (filtered.length) {
+      S.renderCompareView(referenceDish, filtered, msg);
+    } else if (compareDishes.length) {
+      S.renderCompareView(referenceDish, compareDishes, msg);
+    } else {
+      S.hideCompareLoading();
+      S.showCompareError("Aucune alternative trouvée.");
     }
   }
 
@@ -254,6 +315,164 @@
       }, 500);
     }, 3000);
   }
+
+  // ── Native UE Item Modal Observer ───────────────
+  function getStoreInfoFromPage() {
+    const path = window.location.pathname;
+    const storeMatch = path.match(/\/store\/([^/]+)\/([a-f0-9-]+)/);
+    const uuid = storeMatch ? storeMatch[2] : null;
+    const slug = storeMatch ? storeMatch[1] : null;
+
+    // Try to get store name from page heading
+    const heading = document.querySelector('h1, [data-testid="store-title"]');
+    const name = heading?.textContent?.trim() || (slug ? slug.replace(/-/g, " ") : "");
+
+    // Try to get rating
+    const ratingEl = document.querySelector('[data-testid="store-rating"], [aria-label*="rating"]');
+    const rating = ratingEl?.textContent?.match(/([\d.]+)/)?.[1] || null;
+
+    // Try to get ETA
+    const etaEl = document.querySelector('[data-testid="store-eta"]');
+    const eta = etaEl?.textContent?.trim() || null;
+
+    return {
+      uuid,
+      name,
+      rating,
+      eta,
+      actionUrl: path,
+    };
+  }
+
+  function extractDishFromNativeModal(dialog) {
+    // Find the item title — usually the first prominent heading inside the dialog
+    const titleEl = dialog.querySelector('h1, h2, h3, [data-testid*="title"], [data-testid*="name"]');
+    const title = titleEl?.textContent?.trim() || "";
+    if (!title) return null;
+
+    // Find price — look for €
+    let price = null;
+    const priceMatch = dialog.textContent.match(/([\d]+[.,]\d{2})\s*\u20AC/);
+    if (priceMatch) {
+      price = parseFloat(priceMatch[1].replace(",", "."));
+    }
+
+    // Find image
+    const img = dialog.querySelector('img[src*="cloudfront"], img[src*="uber"], img[src*="tbcdn"], picture img');
+    const imageUrl = img?.src || null;
+
+    // Find description
+    const descEl = dialog.querySelector('p, [data-testid*="description"]');
+    const description = descEl?.textContent?.trim() || "";
+
+    // Get store info from page
+    const store = getStoreInfoFromPage();
+
+    return {
+      title,
+      price,
+      description: description.length > 120 ? description.slice(0, 120) : description,
+      image_url: imageUrl,
+      store_name: store.name,
+      store_uuid: store.uuid,
+      store_action_url: store.actionUrl,
+      store_rating: store.rating,
+      store_eta: store.eta,
+      store_delivery_fee: null,
+      item_uuid: null,
+      section_uuid: "",
+      subsection_uuid: "",
+      google_rating: null,
+      google_review_count: null,
+      google_reviews: [],
+      google_place: null,
+    };
+  }
+
+  function tryInjectNativeCompareButton(dialog) {
+    // Already injected?
+    if (dialog.querySelector(".shift-native-compare-btn")) return;
+
+    // Check if this looks like an item detail modal (has price + image)
+    const hasPrice = /\d+[.,]\d{2}\s*\u20AC/.test(dialog.textContent);
+    const hasImage = dialog.querySelector('img[src*="cloudfront"], img[src*="uber"], img[src*="tbcdn"], picture img');
+    if (!hasPrice || !hasImage) return;
+
+    const dish = extractDishFromNativeModal(dialog);
+    if (!dish || !dish.title) return;
+
+    // Find the add-to-cart button and insert criteria buttons ABOVE it
+    const actionArea = dialog.querySelector('button[data-testid*="add"], button[data-testid*="cart"], [data-testid*="action"]');
+    const target = actionArea?.parentElement || dialog.querySelector('footer, [role="footer"]') || dialog;
+
+    const wrap = document.createElement("div");
+    wrap.className = "shift-native-compare-wrap";
+
+    const label = document.createElement("div");
+    label.className = "shift-native-compare-label";
+    label.textContent = "Trouver mieux ailleurs ?";
+    wrap.appendChild(label);
+
+    const mainBtn = document.createElement("button");
+    mainBtn.className = "shift-native-compare-main";
+    mainBtn.innerHTML = `${S.COMPARE_MAIN.icon} ${S.COMPARE_MAIN.label}`;
+    mainBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      S.openCompareView(dish, S.COMPARE_MAIN.key);
+    });
+    wrap.appendChild(mainBtn);
+
+    const row = document.createElement("div");
+    row.className = "shift-native-compare-row";
+
+    S.COMPARE_CRITERIA.forEach((c) => {
+      const btn = document.createElement("button");
+      btn.className = "shift-native-compare-btn";
+      btn.innerHTML = `${c.icon} ${c.label}`;
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        S.openCompareView(dish, c.key);
+      });
+      row.appendChild(btn);
+    });
+
+    wrap.appendChild(row);
+
+    if (actionArea) {
+      actionArea.parentElement.insertBefore(wrap, actionArea);
+    } else {
+      target.appendChild(wrap);
+    }
+
+    console.log("[Shift 2026] Compare button injected into native UE modal for:", dish.title);
+  }
+
+  function observeNativeItemModals() {
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType !== 1) continue;
+          const dialogs = node.matches?.('[role="dialog"]') ? [node] :
+            [...(node.querySelectorAll?.('[role="dialog"]') || [])];
+          for (const dialog of dialogs) {
+            // Small delay to let UE finish rendering the modal content
+            setTimeout(() => tryInjectNativeCompareButton(dialog), 500);
+          }
+          // Also check if the node itself is inside a dialog (UE sometimes adds content after dialog)
+          const parentDialog = node.closest?.('[role="dialog"]');
+          if (parentDialog && !parentDialog.querySelector(".shift-native-compare-btn")) {
+            setTimeout(() => tryInjectNativeCompareButton(parentDialog), 500);
+          }
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  // Start observing immediately on all pages
+  observeNativeItemModals();
 
   // ── Boot ────────────────────────────────────────
   if (document.readyState === "complete") {
