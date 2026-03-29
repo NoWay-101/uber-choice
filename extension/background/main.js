@@ -333,8 +333,9 @@
       // LLM call with comparison prompt + criteria
       sendToTab(tabId, { type: "PROGRESS_COMPARE", step: "selecting" });
       const priceStr = dish.price != null ? dish.price.toFixed(2) + "\u20AC" : "?";
+      const descStr = dish.description ? `\nDescription: ${dish.description}` : "";
       const criteriaText = CRITERIA_INSTRUCTIONS[criteria] || CRITERIA_INSTRUCTIONS.default;
-      const refInfo = `Plat de reference: "${dish.title}" (${priceStr}) chez "${dish.store_name}"\n\nCritere: ${criteriaText}`;
+      const refInfo = `Plat de reference: "${dish.title}" (${priceStr}) chez "${dish.store_name}"${descStr}\n\nCritere: ${criteriaText}`;
       const llmResult = await callLLM(COMPARE_PROMPT, `${refInfo}\n\n${compressed}`);
 
       if (!llmResult?.dishes?.length) {
